@@ -1,3 +1,4 @@
+![Plots helping evaluate convergence](plots.png)
 
 A command-line tool for generating PMF convergence and comparison plots from trajectory data. It visualizes RMSD convergence, sequential PMFs, sampling evolution, and post-convergence vs final PMF profiles.
 
