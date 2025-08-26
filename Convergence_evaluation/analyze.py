@@ -91,8 +91,8 @@ class PMFAnalyzer:
     def _normalize_counts(self, counts):
         """Scale each count array to [0,1] for plotting."""
         normed = []
+        c_min, c_max = np.min(counts), np.max(counts)
         for c in counts:
-            c_min, c_max = np.min(c), np.max(c)
             normed.append((c - c_min) / (c_max - c_min + 1e-12))
         return normed
 

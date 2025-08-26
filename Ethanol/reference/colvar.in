@@ -1,0 +1,46 @@
+Colvarstrajfrequency    10000
+Colvarsrestartfrequency 10000
+
+colvar {
+   name ProjectionZ
+
+   width 0.2
+
+   lowerboundary  0.0
+   upperboundary  28.0
+
+   lowerwallconstant 100.0
+   upperwallconstant 100.0
+
+   lowerWall -1.5
+   upperWall  29.5
+
+   extendedLagrangian
+   extendedFluctuation 0.1
+
+   subtractAppliedForce on
+
+   distanceZ {
+      ref {
+         atomsFile ../common/reference.pdb
+         atomsCol B
+      }
+      main  {
+         atomnumbers { 1 2 3 4 5 6 7 8 9 }
+      }
+   }
+}
+
+abf {
+  colvars ProjectionZ
+  fullSamples     5000
+  historyFreq   100000
+}
+
+metadynamics {
+   colvars ProjectionZ
+   hillWeight 0.02
+   hillWidth  2
+   wellTempered   on
+   biasTemperature   __TEMPVALUE__
+}

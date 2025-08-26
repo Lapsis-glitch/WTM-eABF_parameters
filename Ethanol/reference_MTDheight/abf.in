@@ -1,0 +1,99 @@
+##################################################
+# DESCRIPTION
+##################################################
+
+# ETHANOL IN WATER
+
+##################################################
+# MD SECTION
+##################################################
+
+numSteps             5000000
+
+# TOPOLOGY
+
+structure            ../common/solvate.psf
+
+# FORCE FIELD
+
+parameters           ../common/par_all36_cgenff.prm
+paraTypeCharmm       on
+
+# 1-4 TERMs
+
+exclude              scaled1-4
+1-4scaling           1.0
+
+# INPUT FILES
+
+coordinates          ../common/solvate.pdb
+bincoordinates       ../common/equilibrate.restart.coor
+binvelocities        ../common/equilibrate.restart.vel
+
+# EXTENDED SYSTEM
+
+ExtendedSystem       ../common/equilibrate.restart.xsc
+
+# OUTPUT FILES
+
+binaryoutput         no  
+binaryrestart        yes
+
+outputname           output/window1
+dcdUnitCell          yes
+
+# FREQUENCY FOR DUMPING OUTPUT DATA
+
+outputenergies       10000
+outputtiming         10000
+outputpressure       10000
+restartfreq          10000
+XSTFreq              10000
+dcdFreq              10000
+
+# CUT-OFFs
+
+hgroupcutoff         2.8
+switching            on
+switchdist           10.0
+cutoff               11.0
+pairlistdist         12.0
+
+# WRAPPING
+
+wrapAll              on 
+
+# CONSTANT-T
+
+langevin             on
+langevintemp         298.0
+langevindamping      2.0 
+
+# CONSTANT-V
+
+langevinpiston       off
+
+# PME
+
+PME                  yes
+PMEGridSpacing       1.2
+
+# MULTIPLE TIME-STEP PROPAGATOR
+
+timestep             2.0
+
+fullelectfrequency   2
+nonbondedfreq        1
+
+# SHAKE/RATTLE
+
+rigidbonds           all   
+
+#GPUresident          on
+
+##################################################
+# ABF SECTION
+##################################################
+
+colvars              on
+colvarsConfig        colvar.in

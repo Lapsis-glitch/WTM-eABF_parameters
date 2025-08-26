@@ -1,0 +1,104 @@
+##################################################
+##################################################
+#
+# ABF calculation
+#
+# Deca-alanine
+#
+##################################################
+##################################################
+
+
+##################################################
+# MD SECTION
+##################################################
+
+
+# NUMBER OF MD-STEPS
+
+numsteps             10000000
+
+
+# TOPOLOGY
+
+structure            ../common/deca-ala.psf
+
+
+# FORCE FIELD
+
+parameters           ../common/par_all22_prot_cmap.inp
+paraTypeCharmm       on
+
+
+# 1-4 TERMs
+
+exclude              scaled1-4
+1-4scaling           1.0
+
+
+# INPUT FILES
+
+coordinates          ../common/deca-ala.pdb
+temperature          300.0
+
+
+# OUTPUT FILES
+
+binaryoutput         no  
+binaryrestart        yes
+
+outputname           output/abf_00
+restartname          output/abf_00
+
+
+# DCD FILE
+
+dcdFile              output/abf_00.dcd
+
+
+# FREQUENCY FOR DUMPING OUTPUT DATA
+
+outputenergies       1000
+outputtiming         1000
+outputpressure       1000
+restartfreq          1000 
+XSTFreq              1000 
+dcdFreq              1000
+
+
+# CUT-OFFs
+
+hgroupcutoff         2.8
+switching            on
+switchdist           10.0
+cutoff               12.0
+pairlistdist         14.0
+
+
+# CONSTANT-T
+
+langevin             on
+langevintemp         300.0
+langevindamping      1.0 
+
+
+# MULTIPLE TIME-STEP PROPAGATOR
+
+timestep             0.5
+
+
+# SHAKE/RATTLE
+
+rigidbonds           all
+
+
+# PARALLELISM
+
+#GPUresident          on
+
+
+# ABF SECTION
+
+colvars              on
+colvarsConfig        colvar.in
+
