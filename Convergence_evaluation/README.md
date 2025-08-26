@@ -18,12 +18,17 @@ pip install numpy matplotlib
 
 Usage
 Run the script with your PMF and sampling counts files as positional arguments. The PMF and counts files must contain a history of the simulation and not just the final PMF/counts:
-python pmf_plot.py pmf.txt counts.txt [OPTIONS]
+
+ ```bash
+python analyze.py pmf.hist.czar.pmf counts.hist.count [OPTIONS]
+``` 
 
 
 
-Command-Line Options
-|Flag|Type|Default|Description|
+## Command-Line Options
+
+| Flag               | Type    | Default | Description                                           |
+|--------------------|---------|---------|-------------------------------------------------------|
 | --font-size | int | 14 | Base font size (pt) for titles, labels, ticks |
 | --annotation-fs | int | None | Font size (pt) for annotation text; falls back to --font-size |
 | --no-annotations | boolean | annotations on | Disable all minima/maxima/barrier annotations |
@@ -36,17 +41,25 @@ Command-Line Options
 
 Examples
 - Generate a quick plot with default settings:
-python pmf_plot.py pmf.txt counts.txt
+ ```bash
+python analyze.py pmf.hist.czar.pmf counts.hist.count
+```
 - Increase text size and save as a high-res PNG:
-python pmf_plot.py pmf.txt counts.txt \
+```bash
+python analyze.py pmf.hist.czar.pmf counts.hist.count \
   --font-size 16 \
   --save-path pmf_overview.png \
   --dpi 600
+```
 - Set a stricter convergence threshold and compare 5 snapshots post-conv:
-python pmf_plot.py pmf.txt counts.txt \
+```bash
+python analyze.py pmf.hist.czar.pmf counts.hist.count \
   --conv-threshold 0.001 \
   --n-recent 5 \
   --save-path pmf_report.pdf
+```
 - Disable annotations for a cleaner overlay:
-python pmf_plot.py pmf.txt counts.txt --no-annotations
+```bash
+python analyze.py pmf.hist.czar.pmf counts.hist.count --no-annotations
+```
 
