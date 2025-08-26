@@ -11,6 +11,7 @@ Features
 Requirements
 - Python 3.6 or higher
 - NumPy
+- Scipy
 - Matplotlib
 Install dependencies with pip:
 pip install numpy matplotlib
