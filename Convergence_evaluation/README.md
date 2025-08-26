@@ -32,7 +32,7 @@ python analyze.py pmf.hist.czar.pmf counts.hist.count [OPTIONS]
 |--------------------|---------|---------|-------------------------------------------------------|
 | --font-size | int | 14 | Base font size (pt) for titles, labels, ticks |
 | --annotation-fs | int | None | Font size (pt) for annotation text; falls back to --font-size |
-| --no-annotations | boolean | annotations on | Disable all minima/maxima/barrier annotations |
+| --no-annotations | boolean | True | Disable all minima/maxima/barrier annotations |
 | --save-path | str | None | File path (with extension) to save the figure |
 | --dpi | int | 300 | Resolution (dots per inch) for the saved figure |
 | --conv-threshold | float | 0.01 | RMSD cutoff (Å) below which convergence is declared |
