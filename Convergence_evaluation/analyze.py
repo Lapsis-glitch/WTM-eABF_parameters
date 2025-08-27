@@ -26,7 +26,7 @@ class PMFAnalyzer:
     and annotate key free‐energy features (minima, maxima, plateaus, barriers).
     """
 
-    def __init__(self, pmf_file, count_file, n_recent=4, slope_thresh=1e-3):
+    def __init__(self, pmf_file, count_file, n_recent=4, slope_thresh=1e-3, use_final_rmsd=False):
         """
         pmf_file: path to a time‐series PMF file (blocks separated by '#')
         count_file: analogous file of sampling counts
@@ -36,6 +36,7 @@ class PMFAnalyzer:
         self.pmf_file     = pmf_file
         self.count_file   = count_file
         self.n_recent     = n_recent
+        self.use_final_rmsd = use_final_rmsd
         self.slope_thresh = slope_thresh
 
         # Read in sequential PMFs and counts
@@ -50,11 +51,26 @@ class PMFAnalyzer:
         self.normed_counts = self._normalize_counts(self.counts)
 
         # Compute RMSD convergence diagnostics
-        self.rmsd_raw    = self._compute_rmsd_to_recent()
-        self.t           = np.arange(self.n_recent, len(self.pmf_values))
+        if self.use_final_rmsd:
+        # RMSD of each snapshot to the final PMF
+            final = self.pmf_values[-1]
+            self.rmsd_raw = np.array([
+                np.sqrt(np.mean((pmf - final) ** 2))
+                for pmf in self.pmf_values])
+            # time axis spans all snapshots
+            self.t = np.arange(len(self.rmsd_raw))
+        else:
+            # original “to‐recent‐average” RMSD
+            self.rmsd_raw = self._compute_rmsd_to_recent()
+            self.t = np.arange(self.n_recent, len(self.pmf_values))
+        # smooth & (optional) fit
         self.rmsd_smooth = self._smooth_rmsd(self.rmsd_raw)
         self.params, self.rmsd_fit = self._fit_exp_decay()
-        self.convergence_idx         = self._detect_convergence()
+
+        self.convergence_idx = self._detect_convergence()
+
+        # below = np.where(self.rmsd_smooth <= self.slope_thresh)[0]
+        # self.convergence_idx = (self.t[below[0]] if below.size else None)
 
     def _read_sequential_pmfs(self):
         """Parse PMF file into a list of (coords, pmf) arrays."""
@@ -369,6 +385,10 @@ def main():
     parser.add_argument('--n-recent',
                         type=int, default=10,
                         help='Snapshots after convergence to compare')
+    parser.add_argument('--use-final-rmsd',
+                        action = 'store_true',
+                        help = 'Determine convergence by RMSD to final PMF')
+
 
     args = parser.parse_args()
 
@@ -376,7 +396,9 @@ def main():
         args.pmf_file,
         args.counts_file,
         slope_thresh=args.conv_threshold,
-        n_recent=args.n_recent
+        n_recent=args.n_recent,
+        use_final_rmsd=args.use_final_rmsd
+
     )
 
     analyzer.plot(
@@ -384,7 +406,8 @@ def main():
         annotation_fs=args.annotation_fs,
         show_annotations=args.show_annotations,
         save_path=args.save_path,
-        dpi=args.dpi
+        dpi=args.dpi,
+
     )
 
 
