@@ -38,6 +38,7 @@ python analyze.py pmf.hist.czar.pmf counts.hist.count [OPTIONS]
 | --dpi | int | 300 | Resolution (dots per inch) for the saved figure |
 | --conv-threshold | float | 0.01 | RMSD cutoff (Å) below which convergence is declared |
 | --n-recent | int | 10 | Number of PMF snapshots to average for RMSD calculation, sliding window size |
+| --use-final-rmsd | boolean | False | Calculate RMSD with respect to the final frame instead of sliding window |
 
 
 
