@@ -26,18 +26,20 @@ class PMFAnalyzer:
     and annotate key free‐energy features (minima, maxima, plateaus, barriers).
     """
 
-    def __init__(self, pmf_file, count_file, n_recent=4, slope_thresh=1e-3, use_final_rmsd=False):
+    def __init__(self, pmf_file, count_file, n_recent=4, slope_thresh=1e-3, use_final_rmsd=False,count_std_thresh: int= None):
         """
         pmf_file: path to a time‐series PMF file (blocks separated by '#')
         count_file: analogous file of sampling counts
         n_recent: number of recent PMFs to include in RMSD reference window
         slope_thresh: slope threshold to declare convergence of RMSD fit
+        count_std_thresh: count standard deviation threshold to declare convergence of sampling
         """
         self.pmf_file     = pmf_file
         self.count_file   = count_file
         self.n_recent     = n_recent
         self.use_final_rmsd = use_final_rmsd
         self.slope_thresh = slope_thresh
+        self.count_std_thresh = count_std_thresh
 
         # Read in sequential PMFs and counts
         self.pmfs,         = [self._read_sequential_pmfs()]  # list of (coords, pmf) arrays
@@ -146,13 +148,23 @@ class PMFAnalyzer:
         Determine the first index where the slope of the fitted RMSD falls below
         slope_thresh, marking convergence.
         """
-        if np.isnan(self.rmsd_fit).all():
-            return None
         slope = np.gradient(self.rmsd_fit, self.t)
-        for idx, s in enumerate(slope):
-            if abs(s) < self.slope_thresh:
-                return self.t[idx]
-        return None
+        if self.count_file is None or self.count_std_thresh is None:
+            if np.isnan(self.rmsd_fit).all():
+                return None
+            for idx, s in enumerate(slope):
+                if abs(s) < self.slope_thresh:
+                    return self.t[idx]
+            return None
+        else:
+            for idx, s in enumerate(slope):
+                if abs(s) < self.slope_thresh:
+                    # grab the same window from your normalized counts
+                    window = self.normed_counts[idx: idx + self.n_recent]
+                    mean_std = np.mean(np.std(window, axis=0))
+                    if mean_std < self.count_std_thresh:
+                        return self.t[idx]
+            return None
 
     def detect_features(self, window=5, grad_thresh=0.1):
         """
@@ -294,7 +306,7 @@ class PMFAnalyzer:
 
         ax0.set_title('PMF Convergence',       fontsize=font_size)
         ax0.set_xlabel('PMF Snapshot Index',   fontsize=font_size)
-        ax0.set_ylabel('RMSD [Å]',              fontsize=font_size)
+        ax0.set_ylabel('RMSD [kcal/mol]',              fontsize=font_size)
         ax0.tick_params(labelsize=font_size)
         ax0.legend(fontsize=font_size)
         ax0.grid(True)
@@ -315,11 +327,14 @@ class PMFAnalyzer:
             color = 'black' if i == n-1 else str(0.3 + 0.7 * i/(n-1))
             lw    = 2 if i == n-1 else 1
             ax2.plot(self.count_coords, cnt, color=color, linewidth=lw)
+        if self.convergence_idx:
+            ax2.plot(self.count_coords, self.normed_counts[self.convergence_idx], color='red', linewidth=lw)
         ax2.set_title('Sampling Evolution',     fontsize=font_size)
         ax2.set_xlabel(r'$\xi$',                fontsize=font_size)
         ax2.set_ylabel('Normalized Count',      fontsize=font_size)
         ax2.tick_params(labelsize=font_size)
         ax2.grid(True)
+
 
         # --- Post-convergence vs final PMF + optional annotations ---
         if self.convergence_idx is not None:
@@ -336,6 +351,8 @@ class PMFAnalyzer:
                 axc.tick_params(labelsize=font_size)
                 axc.legend(fontsize=font_size)
                 axc.grid(True)
+
+
 
                 if show_annotations:
                     self.annotate_comparison(axc, min_cutoff=1.0, fs=annotation_fs)
@@ -388,6 +405,9 @@ def main():
     parser.add_argument('--use-final-rmsd',
                         action = 'store_true',
                         help = 'Determine convergence by RMSD to final PMF')
+    parser.add_argument('--counts-std-thresh',
+                        type=float, default=None,
+                        help='Determine convergence by std of the sampling')
 
 
     args = parser.parse_args()
@@ -397,7 +417,8 @@ def main():
         args.counts_file,
         slope_thresh=args.conv_threshold,
         n_recent=args.n_recent,
-        use_final_rmsd=args.use_final_rmsd
+        use_final_rmsd=args.use_final_rmsd,
+        count_std_thresh=args.counts_std_thresh
 
     )
 

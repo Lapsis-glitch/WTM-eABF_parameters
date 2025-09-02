@@ -29,17 +29,17 @@ python analyze.py pmf.hist.czar.pmf counts.hist.count [OPTIONS]
 
 ## Command-Line Options
 
-| Flag               | Type    | Default | Description                                           |
-|--------------------|---------|---------|-------------------------------------------------------|
-| --font-size | int | 14 | Base font size (pt) for titles, labels, ticks |
-| --annotation-fs | int | None | Font size (pt) for annotation text; falls back to --font-size |
-| --no-annotations | boolean | True | Disable all minima/maxima/barrier annotations |
-| --save-path | str | None | File path (with extension) to save the figure |
-| --dpi | int | 300 | Resolution (dots per inch) for the saved figure |
-| --conv-threshold | float | 0.01 | RMSD cutoff (Å) below which convergence is declared |
-| --n-recent | int | 10 | Number of PMF snapshots to average for RMSD calculation, sliding window size |
-| --use-final-rmsd | boolean | False | Calculate RMSD with respect to the final frame instead of sliding window |
-
+| Flag                 | Type    | Default | Description                                                                 |
+|----------------------|---------|---------|-----------------------------------------------------------------------------|
+| --font-size          | int     | 14      | Base font size (pt) for titles, labels, ticks                               |
+| --annotation-fs      | int     | None    | Font size (pt) for annotation text; falls back to --font-size               |
+| --no-annotations     | boolean | True    | Disable all minima/maxima/barrier annotations                               |
+| --save-path          | str     | None    | File path (with extension) to save the figure                               |
+| --dpi                | int     | 300     | Resolution (dots per inch) for the saved figure                             |
+| --conv-threshold     | float   | 0.01    | RMSD cutoff (Å) below which convergence is declared                         |
+| --n-recent           | int     | 10      | Number of PMF snapshots to average for RMSD calculation, sliding window size |
+| --use-final-rmsd     | boolean | False   | Calculate RMSD with respect to the final frame instead of sliding window    |
+| --counts-std-thresh  | flaot   | None    | Add a convergence criterium based on the standard deviation of the sampling |
 
 
 Examples
