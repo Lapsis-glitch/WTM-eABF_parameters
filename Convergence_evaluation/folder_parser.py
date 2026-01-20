@@ -1,9 +1,9 @@
 import argparse
 import os
-from analyze import PMFAnalyzer
+from analyze_ND import PMFAnalyzer
 
 
-def parse(path):
+def parse(path,reference_pmf):
     # parser = argparse.ArgumentParser(
     #     description="path for folder containing abf1.hist.czar.pmf and abf1.hist.count files"
     # )
@@ -30,7 +30,8 @@ def parse(path):
                     slope_thresh=0.01,
                     n_recent=5,
                     use_final_rmsd=False,
-                    count_std_thresh=None
+                    count_std_thresh=None,
+                    reference_pmf_file = reference_pmf
 
                 )
 
@@ -57,6 +58,9 @@ if __name__ == "__main__":
     )
     parser.add_argument('path',
                         help='Path to folders')
+    parser.add_argument('--reference-pmf',
+                        type=str, default=None,
+                        help='Optional external PMF file to use as RMSD reference')
     args = parser.parse_args()
     path = args.path
-    parse(path)
+    parse(path,args.reference_pmf)

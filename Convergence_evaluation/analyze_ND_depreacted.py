@@ -1,10 +1,9 @@
-
 import argparse
+
 import numpy as np
 from scipy.signal import savgol_filter
 from scipy.optimize import curve_fit
 from scipy.ndimage import minimum_filter, maximum_filter
-from scipy.interpolate import RegularGridInterpolator
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
@@ -17,15 +16,13 @@ class PMFAnalyzer:
 
     def __init__(self, pmf_file, count_file, n_recent=4,
                  slope_thresh=1e-3, use_final_rmsd=False,
-                 count_std_thresh: int = None,
-                 reference_pmf_file: str = None):
+                 count_std_thresh: int = None):
         """
         pmf_file: path to a time-series PMF file (blocks separated by '#')
         count_file: analogous file of sampling counts
         n_recent: number of recent PMFs to include in RMSD reference window
         slope_thresh: slope threshold to declare convergence of RMSD fit
         count_std_thresh: count standard deviation threshold to declare convergence of sampling
-        reference_pmf_file: optional external PMF file to use as RMSD reference
         """
         self.pmf_file     = pmf_file
         self.count_file   = count_file
@@ -33,7 +30,6 @@ class PMFAnalyzer:
         self.use_final_rmsd = use_final_rmsd
         self.slope_thresh = slope_thresh
         self.count_std_thresh = count_std_thresh
-        self.reference_pmf_file = reference_pmf_file
 
         # Read in sequential PMFs and counts
         self.pmfs = self._read_sequential_pmfs()   # list of (coords_tuple, pmf_ndarray)
@@ -46,28 +42,13 @@ class PMFAnalyzer:
         # Normalize counts for plotting
         self.normed_counts = self._normalize_counts(self.counts)
 
-        # Optional external reference PMF
-        self.reference_pmf = None
-        if self.reference_pmf_file is not None:
-            ref_coords, ref_pmf = self._read_single_pmf(self.reference_pmf_file)
-            self.reference_pmf = self._interpolate_to_grid(ref_coords, ref_pmf, self.pmf_coords)
-
         # Compute RMSD convergence diagnostics
-        if self.reference_pmf is not None:
-            # RMSD to external reference
-            self.rmsd_raw = np.array([
-                np.sqrt(np.mean((pmf - self.reference_pmf) ** 2))
-                for pmf in self.pmf_values
-            ])
-            self.t = np.arange(len(self.rmsd_raw))
-
-        elif self.use_final_rmsd:
+        if self.use_final_rmsd:
             final = self.pmf_values[-1]
             self.rmsd_raw = np.array([
                 np.sqrt(np.mean((pmf - final) ** 2))
                 for pmf in self.pmf_values])
             self.t = np.arange(len(self.rmsd_raw))
-
         else:
             self.rmsd_raw = self._compute_rmsd_to_recent()
             self.t = np.arange(self.n_recent, len(self.pmf_values))
@@ -82,6 +63,10 @@ class PMFAnalyzer:
     # File parsing
     # ----------------------------
     def _read_sequential_pmfs(self):
+        """
+        Parse PMF file into a list of (coords_tuple, pmf_ndarray).
+        Assumes each block is a flattened grid with columns: coord1 coord2 ... coordN value
+        """
         pmfs = []
         with open(self.pmf_file, 'r') as f:
             tmp = []
@@ -100,6 +85,10 @@ class PMFAnalyzer:
         return pmfs
 
     def _read_sequential_counts(self):
+        """
+        Parse count file into a list of count arrays and a shared coordinate grid.
+        Assumes same format as PMF file.
+        """
         counts = []
         coords = None
         with open(self.count_file, 'r') as f:
@@ -117,61 +106,11 @@ class PMFAnalyzer:
                     tmp.append(line.split())
         return counts, coords
 
-    def _read_single_pmf(self, filename):
-        tmp = []
-        coords_tuple = None
-        pmf = None
-        with open(filename, 'r') as f:
-            for line in f:
-                if line.startswith('#'):
-                    if tmp:
-                        arr = np.array(tmp, float)
-                        coords = [np.unique(arr[:, i]) for i in range(arr.shape[1]-1)]
-                        shape = tuple(len(c) for c in coords)
-                        pmf = arr[:, -1].reshape(shape)
-                        coords_tuple = tuple(coords)
-                        break
-                    continue
-                if line.strip():
-                    tmp.append(line.split())
-        if pmf is None and tmp:
-            arr = np.array(tmp, float)
-            coords = [np.unique(arr[:, i]) for i in range(arr.shape[1]-1)]
-            shape = tuple(len(c) for c in coords)
-            pmf = arr[:, -1].reshape(shape)
-            coords_tuple = tuple(coords)
-        return coords_tuple, pmf
-
-    def _interpolate_to_grid(self, src_coords, src_pmf, target_coords):
-        if len(src_coords) == len(target_coords) and all(
-            np.array_equal(sc, tc) for sc, tc in zip(src_coords, target_coords)
-        ):
-            return src_pmf
-
-        interpolator = RegularGridInterpolator(
-            src_coords,
-            src_pmf,
-            bounds_error=False,
-            fill_value=np.nan
-        )
-
-        mesh = np.meshgrid(*target_coords, indexing='ij')
-        points = np.stack([m.flatten() for m in mesh], axis=-1)
-
-        new_pmf_flat = interpolator(points)
-        new_pmf = new_pmf_flat.reshape([len(c) for c in target_coords])
-
-        nan_mask = np.isnan(new_pmf)
-        if np.any(nan_mask):
-            max_val = np.nanmax(new_pmf)
-            new_pmf[nan_mask] = max_val + 50.0
-
-        return new_pmf
-
     # ----------------------------
     # Normalization
     # ----------------------------
     def _normalize_counts(self, counts):
+        """Scale each count array to [0,1] for plotting."""
         normed = []
         c_min = min(np.min(c) for c in counts)
         c_max = max(np.max(c) for c in counts)
@@ -183,6 +122,7 @@ class PMFAnalyzer:
     # RMSD Convergence
     # ----------------------------
     def _compute_rmsd_to_recent(self):
+        """Compute RMSD of each PMF to the average of the previous n_recent PMFs."""
         rmsd = []
         for i in range(self.n_recent, len(self.pmf_values)):
             ref = np.mean(self.pmf_values[i-self.n_recent:i], axis=0)
@@ -191,15 +131,18 @@ class PMFAnalyzer:
         return np.array(rmsd)
 
     def _smooth_rmsd(self, rmsd, window_length=11, polyorder=3):
+        """Apply Savitzky-Golay filter to smooth the RMSD curve."""
         if len(rmsd) < 3:
             return rmsd
         wl = min(window_length, len(rmsd) if len(rmsd)%2 else len(rmsd)-1)
         return savgol_filter(rmsd, window_length=wl, polyorder=polyorder)
 
     def _exp_decay(self, t, A, B, C):
+        """Exponential decay model A * exp(-B t) + C."""
         return A * np.exp(-B*t) + C
 
     def _fit_exp_decay(self):
+        """Fit the smoothed RMSD to an exponential decay to find convergence behavior."""
         try:
             params, _ = curve_fit(self._exp_decay, self.t, self.rmsd_smooth,
                                   p0=(1,0.1,0.01), maxfev=10000)
@@ -210,6 +153,7 @@ class PMFAnalyzer:
             return None, np.full_like(self.t, np.nan)
 
     def _detect_convergence(self):
+        """Determine the first index where the slope of the fitted RMSD falls below slope_thresh."""
         if np.isnan(self.rmsd_fit).all():
             return None
         slope = np.gradient(self.rmsd_fit, self.t)
@@ -231,19 +175,26 @@ class PMFAnalyzer:
     # Feature Detection (N-D)
     # ----------------------------
     def detect_features(self, window=3, grad_thresh=0.1):
-        pmf_grid = self.pmf_values[-1]
-        coords   = self.pmf_coords
+        """
+        Locate minima, maxima, and plateau regions in the FINAL PMF.
+        Works for arbitrary N-D PMFs.
+        """
+        pmf_grid = self.pmf_values[-1]   # N-D array
+        coords   = self.pmf_coords       # tuple of coordinate arrays
 
+        # 1) Local minima / maxima via ndimage filters
         local_min = (pmf_grid == minimum_filter(pmf_grid, size=window))
         local_max = (pmf_grid == maximum_filter(pmf_grid, size=window))
 
         minima_idx = np.argwhere(local_min)
         maxima_idx = np.argwhere(local_max)
 
-        grads = np.gradient(pmf_grid, *coords)
+        # 2) Plateaus via gradient magnitude
+        grads = np.gradient(pmf_grid, *coords)   # returns list of N gradients
         grad_mag = np.sqrt(sum(g**2 for g in grads))
         plateau_idx = np.argwhere(grad_mag < grad_thresh)
 
+        # 3) Store features as index arrays
         self.features = {
             'minima': minima_idx,
             'maxima': maxima_idx,
@@ -254,31 +205,42 @@ class PMFAnalyzer:
     # Utility: map indices to coordinates
     # ----------------------------
     def indices_to_coords(self, indices):
+        """
+        Convert index array (like from np.argwhere) into physical coordinates.
+        """
         coords_list = []
         for idx in indices:
             coords_list.append(tuple(c[i] for c, i in zip(self.pmf_coords, idx)))
         return np.array(coords_list)
 
     def annotate_comparison(self, ax, fs=14):
+        """
+        Annotate the comparison subplot with font-size fs for all labels/arrows.
+        For N-D PMFs, plots using the first two dimensions.
+        """
         self.detect_features()
 
         pmf_grid = self.pmf_values[-1]
         coords = self.pmf_coords
 
+        # --- 1D case: line plot with annotations ---
         if pmf_grid.ndim == 1:
             x = coords[0]
             y = pmf_grid
 
+            # Minima (blue)
             for idx in self.features['minima']:
                 xm, ym = x[idx[0]], y[idx[0]]
                 ax.plot(xm, ym, 'bo')
                 ax.text(xm, ym - 0.5, f"Min\n{xm:.2f}", fontsize=fs, ha='center', color='blue')
 
+            # Maxima (red)
             for idx in self.features['maxima']:
                 xM, yM = x[idx[0]], y[idx[0]]
                 ax.plot(xM, yM, 'ro')
                 ax.text(xM, yM + 0.5, f"Max\n{xM:.2f}", fontsize=fs, ha='center', color='red')
 
+            # Plateaus (green, sampled)
             pts = self.features['plateaus']
             sample = pts[::max(1, len(pts) // 5)]
             for idx in sample:
@@ -286,22 +248,26 @@ class PMFAnalyzer:
                 ax.plot(xf, yf, 'go', alpha=0.3)
                 ax.text(xf, yf + 0.5, f"{yf:.2f}", fontsize=fs, ha='center', color='green')
 
+        # --- 2D or higher: contour plot with annotations on first two dims ---
         else:
             X, Y = np.meshgrid(coords[0], coords[1], indexing='ij')
             ax.contourf(X, Y, pmf_grid, levels=30, cmap='viridis')
             ax.set_xlabel('Coord 1')
             ax.set_ylabel('Coord 2')
 
+            # Minima (blue)
             for idx in self.features['minima']:
                 xm, ym = coords[0][idx[0]], coords[1][idx[1]]
                 ax.plot(xm, ym, 'bo')
                 ax.text(xm, ym, "Min", fontsize=fs, ha='center', color='blue')
 
+            # Maxima (red)
             for idx in self.features['maxima']:
                 xM, yM = coords[0][idx[0]], coords[1][idx[1]]
                 ax.plot(xM, yM, 'ro')
                 ax.text(xM, yM, "Max", fontsize=fs, ha='center', color='red')
 
+            # Plateaus (green, sampled)
             pts = self.features['plateaus']
             sample = pts[::max(1, len(pts) // 20)]
             for idx in sample:
@@ -314,6 +280,12 @@ class PMFAnalyzer:
              show_annotations=True,
              save_path=None,
              dpi=300):
+        """
+        Plot convergence, sequential PMFs, sampling density, and
+        post-convergence vs final PMF, with optional annotations.
+        For N-D PMFs, sequential plots use first dimension (line plots),
+        and comparison uses first two dimensions (contour).
+        """
         if annotation_fs is None:
             annotation_fs = font_size
 
@@ -417,7 +389,6 @@ class PMFAnalyzer:
 
         plt.show()
 
-
 # ---- Command-line interface ----
 def main():
     parser = argparse.ArgumentParser(description='Generate PMF convergence & comparison plots')
@@ -448,7 +419,7 @@ def main():
                         type=int, default=300,
                         help='DPI for saved file')
 
-    # convergence threshold & n_recent
+    # new: convergence threshold & n_recent
     parser.add_argument('--conv-threshold',
                         type=float, default=0.01,
                         help='RMSD cutoff for convergence detection')
@@ -462,11 +433,6 @@ def main():
                         type=float, default=None,
                         help='Determine convergence by std of the sampling')
 
-    # NEW: external reference PMF
-    parser.add_argument('--reference-pmf',
-                        type=str, default=None,
-                        help='Optional external PMF file to use as RMSD reference')
-
     args = parser.parse_args()
 
     analyzer = PMFAnalyzer(
@@ -475,8 +441,8 @@ def main():
         slope_thresh=args.conv_threshold,
         n_recent=args.n_recent,
         use_final_rmsd=args.use_final_rmsd,
-        count_std_thresh=args.counts_std_thresh,
-        reference_pmf_file=args.reference_pmf
+        count_std_thresh=args.counts_std_thresh
+
     )
 
     analyzer.plot(
@@ -485,8 +451,8 @@ def main():
         show_annotations=args.show_annotations,
         save_path=args.save_path,
         dpi=args.dpi,
-    )
 
+    )
 
 if __name__ == '__main__':
     main()
