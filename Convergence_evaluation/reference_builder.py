@@ -119,34 +119,52 @@ def interpolate_pmf(coords_tuple, pmf, n_points):
 
 def write_sequential_pmf(coords_tuple, pmf, filename):
     """
-    Write an N-dimensional PMF in the same sequential format used by analyze_ND.py.
+    Write an N-dimensional PMF in the exact sequential format:
+
+    # N
+    # start1 step1 size1 1
+    # start2 step2 size2 1
+    ...
+    <coord1> <coord2> ... <value>
+    <coord1> <coord2> ... <value>
+    ...
+    <blank line after each sweep of the first dimension>
     """
+
     ndim = len(coords_tuple)
     shape = pmf.shape
 
-    # Infer grid metadata
+    # Compute metadata for each dimension
     starts = [coords[0] for coords in coords_tuple]
-    steps = [coords[1] - coords[0] if len(coords) > 1 else 0.0 for coords in coords_tuple]
-    sizes = [len(coords) for coords in coords_tuple]
+    steps  = [(coords[1] - coords[0]) if len(coords) > 1 else 0.0
+              for coords in coords_tuple]
+    sizes  = [len(coords) for coords in coords_tuple]
 
     with open(filename, "w") as f:
-        # Header: number of dimensions
+
+        # First header line: number of dimensions
         f.write(f"# {ndim}\n")
 
-        # Header: start, step, size, 0 for each dimension
-        header_parts = []
+        # One header line per dimension
         for start, step, size in zip(starts, steps, sizes):
-            header_parts.append(f"{start: .14e}  {step: .14e}  {size:8d}  0")
+            f.write(f"# {start: .14e}  {step: .14e}  {size:8d}  1\n")
 
-        f.write("#  " + "   ".join(header_parts) + "\n\n")
+        f.write("\n")  # blank line after header block
 
-        # Flatten grid in C-order
-        it = np.nditer(pmf, flags=['multi_index'])
-        for val in it:
-            idx = it.multi_index
-            coords = [coords_tuple[d][idx[d]] for d in range(ndim)]
-            line = "  ".join(f"{c: .14e}" for c in coords) + f"   {val: .14e}\n"
-            f.write(line)
+        # Write data rows
+        # Loop explicitly over first dimension so we can insert blank lines
+        for i in range(shape[0]):
+            # Iterate over all remaining dimensions
+            it = np.nditer(pmf[i], flags=['multi_index'])
+            for val in it:
+                idx = it.multi_index
+                full_idx = (i,) + idx
+                coords = [coords_tuple[d][full_idx[d]] for d in range(ndim)]
+                line = "  ".join(f"{c: .14e}" for c in coords) + f"   {val: .14e}\n"
+                f.write(line)
+
+            # Blank line after finishing one sweep of the first dimension
+            f.write("\n")
 
 
 # ============================================================
