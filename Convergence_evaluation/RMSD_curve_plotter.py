@@ -7,11 +7,11 @@ from Convergence_evaluation.analyze import PMFAnalyzer  # your PMFAnalyzer class
 # --- CONFIG ---
 parent_dir = "/home/rat/Nancy_D/ABF_parameter_test/decaalanine_parameter_scripted"
 pmf_filename = "output/abf_00.abf1.hist.czar.pmf"
-count_filename = "output/abf_00.abf1.hist.count"
+count_filename = "output/abf_00.abf1.hist.zcount"
 
 parent_dir = "/home/rat/Nancy_D/ABF_parameter_test/ethanol_scripted"
 pmf_filename = "output/window1.abf1.hist.czar.pmf"
-count_filename = "output/window1.abf1.hist.count"
+count_filename = "output/window1.abf1.hist.zcount"
 
 use_final_rmsd = True
 n_recent = 4

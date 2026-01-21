@@ -61,18 +61,18 @@ python buildref.py /home/user/decaalanine/
 
 - Generate a quick plot with default settings:
  ```bash
-python analyze_ND.py pmf.hist.czar.pmf counts.hist.count
+python analyze_ND.py pmf.hist.czar.pmf counts.hist.zcount
 ```
 - Increase text size and save as a high-res PNG:
 ```bash
-python analyze_ND.py pmf.hist.czar.pmf counts.hist.count \
+python analyze_ND.py pmf.hist.czar.pmf counts.hist.zcount \
   --font-size 16 \
   --save-path pmf_overview.png \
   --dpi 600
 ```
 - Set a stricter convergence threshold and compare 5 snapshots post-conv:
 ```bash
-python analyze_ND.py pmf.hist.czar.pmf counts.hist.count \
+python analyze_ND.py pmf.hist.czar.pmf counts.hist.zcount \
   --conv-threshold 0.001 \
   --n-recent 5 \
   --save-path pmf_report.pdf
