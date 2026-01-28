@@ -10,211 +10,214 @@ kB = 0.008314462618  # kJ/mol/K
 # ============================================================
 
 def pmf_to_prob(F, T):
-    """
-    Convert PMF F(x) to normalized probability P(x).
-    F in kJ/mol, T in Kelvin.
-    """
     beta = 1.0 / (kB * T)
-    P_unnorm = np.exp(-beta * F)
-
-    # Normalize using sum or integral depending on dimensionality
-    Z = np.sum(P_unnorm)
-    return P_unnorm / Z
+    P = np.exp(-beta * F)
+    return P / np.sum(P)
 
 
 def prob_to_pmf(P, T):
-    """
-    Convert probability P(x) to PMF F(x).
-    """
     beta = 1.0 / (kB * T)
     F = -1.0 / beta * np.log(P)
-
-    # Shift minimum to zero
-    F -= np.min(F)
-    return F
+    return F - np.min(F)
 
 
 # ============================================================
-# 2. Combine probabilities + compute uncertainties
-# ============================================================
-
-def combine_probabilities(P_list, weights=None):
-    """
-    Combine multiple probability distributions into a reference distribution.
-    Also compute per-bin standard deviation across simulations.
-    """
-    n = len(P_list)
-
-    if weights is None:
-        weights = np.ones(n) / n
-    else:
-        weights = np.array(weights) / np.sum(weights)
-
-    # Weighted mean probability
-    P_ref = np.zeros_like(P_list[0])
-    for w, P in zip(weights, P_list):
-        P_ref += w * P
-
-    # Standard deviation across simulations (unweighted)
-    P_stack = np.stack(P_list, axis=0)
-    P_std = np.std(P_stack, axis=0)
-
-    return P_ref, P_std
-
-
-# ============================================================
-# 3. Interpolation to uniform grid (N-dimensional)
+# 2. Interpolation to uniform grid (N-dimensional)
 # ============================================================
 
 def interpolate_pmf(coords_tuple, pmf, n_points):
-    """
-    Interpolate an N-dimensional PMF onto a new uniform grid
-    with n_points per dimension.
-
-    coords_tuple: tuple of coordinate arrays (x1, x2, ..., xN)
-    pmf: ndarray of shape (len(x1), len(x2), ..., len(xN))
-    n_points: int, number of points per dimension in the new grid
-
-    Returns:
-        new_coords_tuple: tuple of new coordinate arrays
-        new_pmf: interpolated PMF array
-    """
-    ndim = len(coords_tuple)
-
-    # Build new uniform grid
-    new_coords = []
-    for coords in coords_tuple:
-        new_coords.append(np.linspace(coords[0], coords[-1], n_points))
-
+    new_coords = [np.linspace(c[0], c[-1], n_points) for c in coords_tuple]
     new_coords_tuple = tuple(new_coords)
 
-    # Create interpolator
     interpolator = RegularGridInterpolator(
-        coords_tuple,
-        pmf,
-        bounds_error=False,
-        fill_value=np.nan
+        coords_tuple, pmf, bounds_error=False, fill_value=np.nan
     )
 
-    # Build meshgrid
     mesh = np.meshgrid(*new_coords_tuple, indexing="ij")
     points = np.stack([m.flatten() for m in mesh], axis=-1)
 
-    # Interpolate
-    new_pmf_flat = interpolator(points)
-    new_pmf = new_pmf_flat.reshape([n_points] * ndim)
+    new_pmf = interpolator(points).reshape([n_points] * len(coords_tuple))
 
     # Replace NaNs with large values
     nan_mask = np.isnan(new_pmf)
     if np.any(nan_mask):
-        max_val = np.nanmax(new_pmf)
-        new_pmf[nan_mask] = max_val + 50.0
+        new_pmf[nan_mask] = np.nanmax(new_pmf) + 50.0
 
     return new_coords_tuple, new_pmf
 
 
 # ============================================================
-# 4. Write PMF in your sequential format
+# 3. Write PMF in sequential format
 # ============================================================
 
 def write_sequential_pmf(coords_tuple, pmf, filename):
     """
-    Write an N-dimensional PMF in the exact sequential format:
-
-    # N
-    # start1 step1 size1 1
-    # start2 step2 size2 1
-    ...
-    <coord1> <coord2> ... <value>
-    <coord1> <coord2> ... <value>
-    ...
-    <blank line after each sweep of the first dimension>
+    For ND:
+      - header with dimension metadata
+      - data rows in nested order
+      - blank line after each sweep of the first dimension (i index)
+    For 1D:
+      - no blank blank lines between rows.
     """
-
     ndim = len(coords_tuple)
     shape = pmf.shape
 
-    # Compute metadata for each dimension
-    starts = [coords[0] for coords in coords_tuple]
-    steps  = [(coords[1] - coords[0]) if len(coords) > 1 else 0.0
-              for coords in coords_tuple]
-    sizes  = [len(coords) for coords in coords_tuple]
+    starts = [c[0] for c in coords_tuple]
+    steps = [(c[1] - c[0]) if len(c) > 1 else 0.0 for c in coords_tuple]
+    sizes = [len(c) for c in coords_tuple]
 
     with open(filename, "w") as f:
-
-        # First header line: number of dimensions
         f.write(f"# {ndim}\n")
-
-        # One header line per dimension
         for start, step, size in zip(starts, steps, sizes):
             f.write(f"# {start: .14e}  {step: .14e}  {size:8d}  1\n")
+        f.write("\n")
 
-        f.write("\n")  # blank line after header block
-
-        # Write data rows
-        # Loop explicitly over first dimension so we can insert blank lines
-        for i in range(shape[0]):
-            # Iterate over all remaining dimensions
-            it = np.nditer(pmf[i], flags=['multi_index'])
-            for val in it:
-                idx = it.multi_index
-                full_idx = (i,) + idx
-                coords = [coords_tuple[d][full_idx[d]] for d in range(ndim)]
-                line = "  ".join(f"{c: .14e}" for c in coords) + f"   {val: .14e}\n"
-                f.write(line)
-
-            # Blank line after finishing one sweep of the first dimension
-            f.write("\n")
+        if ndim == 1:
+            # Simple 1D: no blank lines between rows
+            x = coords_tuple[0]
+            for i in range(shape[0]):
+                f.write(f"{x[i]: .14e}   {pmf[i]: .14e}\n")
+        else:
+            # ND: blank line after each sweep of the first dimension
+            for i in range(shape[0]):
+                it = np.nditer(pmf[i], flags=['multi_index'])
+                for val in it:
+                    idx = (i,) + it.multi_index
+                    coords = [coords_tuple[d][idx[d]] for d in range(ndim)]
+                    f.write("  ".join(f"{c: .14e}" for c in coords) + f"   {val: .14e}\n")
+                f.write("\n")
 
 
 # ============================================================
-# 5. Main function: compute reference PMF + errors
+# 4. Unified plotting function (1D only)
 # ============================================================
 
-def compute_reference_pmf(coords_tuple, F_list, T, weights=None):
+def plot_pmf_set(
+    x,
+    F_median,
+    F_all, F_all_err,
+    F_filt, F_filt_err,
+    deviations,
+    cutoff,
+    prefix="reference"
+):
+    """Unified plotting for all PMF curves + outlier diagnostics."""
+
+    # --- PMF comparison plot ---
+    plt.figure(figsize=(8, 6))
+    plt.plot(x, F_median, label="Median PMF", linewidth=2)
+    plt.plot(x, F_all, '--', label="Average (all)", linewidth=2, color='C1')
+    plt.plot(x, F_filt, '-.', label="Average (filtered)", linewidth=2, color='C2')
+
+    plt.fill_between(x, F_all - F_all_err, F_all + F_all_err,
+                     alpha=0.2, color='C1', label="Error (all)")
+    plt.fill_between(x, F_filt - F_filt_err, F_filt + F_filt_err,
+                     alpha=0.2, color='C2', label="Error (filtered)")
+
+    plt.xlabel("Coordinate")
+    plt.ylabel("PMF (kcal/mol)")
+    plt.title("Reference PMFs: Median vs Averages")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f"{prefix}_pmf_comparison.png", dpi=300)
+    plt.close()
+
+    # --- Outlier diagnostics ---
+    plt.figure(figsize=(7, 5))
+    plt.plot(deviations, 'o', label="Deviation from median")
+    plt.axhline(cutoff, color='red', linestyle='--', label="Outlier cutoff")
+    plt.xlabel("Simulation index")
+    plt.ylabel("Deviation (RMSD in P-space)")
+    plt.title("Outlier Diagnostics (MAD-based)")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f"{prefix}_outlier_diagnostics.png", dpi=300)
+    plt.close()
+
+
+# ============================================================
+# 5. Main: median + all-average + filtered-average PMFs
+# ============================================================
+
+def compute_reference_pmf_with_outliers(
+    coords_tuple,
+    F_list,
+    T,
+    mad_cut=3.5,
+    write_prefix="reference"
+):
     """
     Full pipeline:
     - Convert PMFs to probabilities
-    - Combine probabilities
-    - Convert back to PMF
-    - Compute uncertainties
+    - Compute:
+        * Median PMF
+        * Average PMF over ALL simulations (+ error)
+        * Average PMF over NON-OUTLIER simulations (+ error)
+    - Outliers detected via MAD on deviation from median
+    - Write three PMFs + their errors (for averages)
+    - Unified plotting
     """
-    # Convert each PMF to probability
+
+    # Convert to probabilities
     P_list = [pmf_to_prob(F, T) for F in F_list]
+    P_stack = np.stack(P_list, axis=0)
 
-    # Combine probabilities + compute std dev
-    P_ref, P_std = combine_probabilities(P_list, weights)
+    # --- Median ---
+    P_median = np.median(P_stack, axis=0)
+    F_median = prob_to_pmf(P_median, T)
 
-    # Convert reference probability to PMF
-    F_ref = prob_to_pmf(P_ref, T)
-
-    # Convert probability std to PMF std via error propagation:
-    # σ_F = (kT / P) * σ_P
+    # --- Average over ALL ---
+    P_all = np.mean(P_stack, axis=0)
+    P_all_std = np.std(P_stack, axis=0)
+    F_all = prob_to_pmf(P_all, T)
     beta = 1.0 / (kB * T)
-    F_err = (1.0 / beta) * (P_std / P_ref)
+    F_all_err = (1.0 / beta) * (P_all_std / P_all)
 
-    return F_ref, F_err
+    # --- Outlier detection (N-dimensional safe) ---
+    flat = P_stack.reshape(P_stack.shape[0], -1)
+    flat_median = P_median.reshape(-1)
+    deviations = np.sqrt(np.mean((flat - flat_median) ** 2, axis=1))
 
+    med_dev = np.median(deviations)
+    mad = np.median(np.abs(deviations - med_dev)) + 1e-12
+    cutoff = med_dev + mad_cut * mad
+    keep_mask = deviations < cutoff
 
-# ============================================================
-# 6. Plotting (1D only)
-# ============================================================
+    P_kept = P_stack[keep_mask]
+    P_filt = np.mean(P_kept, axis=0)
+    P_filt_std = np.std(P_kept, axis=0)
+    F_filt = prob_to_pmf(P_filt, T)
+    F_filt_err = (1.0 / beta) * (P_filt_std / P_filt)
 
-def plot_reference_pmf(coords_tuple, F_ref, F_err, filename="reference_pmf.png"):
-    """
-    Plot 1D PMF with error bars.
-    """
-    if len(coords_tuple) != 1:
-        print("Plotting is only implemented for 1D PMFs.")
-        return
+    # --- Write PMFs + errors ---
+    write_sequential_pmf(coords_tuple, F_median, f"{write_prefix}_median.pmf")
 
-    x = coords_tuple[0]
+    write_sequential_pmf(coords_tuple, F_all, f"{write_prefix}_average_all.pmf")
+    write_sequential_pmf(coords_tuple, F_all_err, f"{write_prefix}_average_all_err.pmf")
 
-    plt.figure(figsize=(7, 5))
-    plt.errorbar(x, F_ref, yerr=F_err, fmt='-o', markersize=3, capsize=3)
-    plt.xlabel("Coordinate")
-    plt.ylabel("PMF (kcal/mol)")
-    plt.title("Reference PMF with Error Bars")
-    plt.tight_layout()
-    plt.savefig(filename, dpi=300)
-    plt.close()
+    write_sequential_pmf(coords_tuple, F_filt, f"{write_prefix}_average_filtered.pmf")
+    write_sequential_pmf(coords_tuple, F_filt_err, f"{write_prefix}_average_filtered_err.pmf")
+
+    # --- Plotting (1D only) ---
+    if len(coords_tuple) == 1:
+        x = coords_tuple[0]
+        plot_pmf_set(
+            x,
+            F_median,
+            F_all, F_all_err,
+            F_filt, F_filt_err,
+            deviations,
+            cutoff,
+            prefix=write_prefix
+        )
+
+    return {
+        "F_median": F_median,
+        "F_all": F_all,
+        "F_all_err": F_all_err,
+        "F_filtered": F_filt,
+        "F_filtered_err": F_filt_err,
+        "keep_mask": keep_mask,
+        "deviations": deviations,
+        "cutoff": cutoff,
+    }

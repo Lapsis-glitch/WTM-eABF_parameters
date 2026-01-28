@@ -4,14 +4,13 @@ import argparse
 import numpy as np
 
 from reference_builder import (
-    compute_reference_pmf,
+    interpolate_pmf,
     write_sequential_pmf,
-    plot_reference_pmf,
-    interpolate_pmf
+    compute_reference_pmf_with_outliers,
 )
 
 # ------------------------------------------------------------
-# Helper: read PMFs using your existing analyze_ND logic
+# Helper: read PMFs in sequential format
 # ------------------------------------------------------------
 
 def read_sequential_pmf_file(filename):
@@ -57,14 +56,19 @@ def run(base_dir, temperature=300, name="abf_00.abf1", n_points=100):
     Look inside each immediate subdirectory of base_dir.
     In each subdirectory, look for:
         {name}.czar.pmf
+
     Collect all PMFs, interpolate them to a common grid,
-    compute reference PMF + errors, and save results.
+    compute:
+        - median PMF
+        - average PMF (all)
+        - average PMF (filtered)
+    and save results + PNG plots.
     """
 
     pmf_filename = f"{name}.czar.pmf"
     pmf_paths = []
 
-    # Only check immediate subdirectories
+    # Scan subdirectories
     for entry in os.listdir(base_dir):
         subdir = os.path.join(base_dir, entry)
         if os.path.isdir(subdir):
@@ -93,30 +97,28 @@ def run(base_dir, temperature=300, name="abf_00.abf1", n_points=100):
         if coords_tuple is None:
             coords_tuple = coords_interp
         else:
-            # Optional: check consistency
             if any(len(c1) != len(c2) for c1, c2 in zip(coords_tuple, coords_interp)):
                 print("Warning: grid mismatch after interpolation")
 
         F_list.append(F_interp)
 
-    # Compute reference PMF + errors
-    F_ref, F_err = compute_reference_pmf(coords_tuple, F_list, temperature)
+    # --------------------------------------------------------
+    # Compute robust reference PMFs (median + averages)
+    # --------------------------------------------------------
+    results = compute_reference_pmf_with_outliers(
+        coords_tuple,
+        F_list,
+        T=temperature,
+        mad_cut=3.5,
+        write_prefix=os.path.join(base_dir, "reference")
+    )
 
-    # Save outputs in the base directory
-    out_pmf = os.path.join(base_dir, "reference.czar.pmf")
-    out_err = os.path.join(base_dir, "reference.czar.errors")
-
-    write_sequential_pmf(coords_tuple, F_ref, out_pmf)
-    write_sequential_pmf(coords_tuple, F_err, out_err)
-
-    print(f"Saved reference PMF to: {out_pmf}")
-    print(f"Saved reference errors to: {out_err}")
-
-    # Plot (only for 1D)
-    plot_reference_pmf(coords_tuple, F_ref, F_err,
-                       filename=os.path.join(base_dir, "reference_pmf.png"))
-
-    print("Plot saved as reference_pmf.png")
+    print("Saved:")
+    print("  reference_median.pmf")
+    print("  reference_average_all.pmf")
+    print("  reference_average_filtered.pmf")
+    print("  reference_pmf_comparison.png")
+    print("  reference_outlier_diagnostics.png")
 
 
 # ------------------------------------------------------------
@@ -125,7 +127,7 @@ def run(base_dir, temperature=300, name="abf_00.abf1", n_points=100):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Compute reference PMF from multiple simulations."
+        description="Compute robust reference PMF from multiple simulations."
     )
     parser.add_argument("--dir", required=True,
                         help="Base directory containing subdirectories with PMFs.")
