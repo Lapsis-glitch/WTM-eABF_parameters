@@ -33,7 +33,8 @@ class PMFAnalyzer:
                  use_sliding_window=False,
                  count_std_thresh=None,
                  reference_pmf_file=None,
-                 rmsd_thresh=None):
+                 rmsd_thresh=None,
+                 use_ref_and_slope=False):
 
         self.pmf_file = pmf_file
         self.count_file = count_file
@@ -43,6 +44,7 @@ class PMFAnalyzer:
         self.count_std_thresh = count_std_thresh
         self.reference_pmf_file = reference_pmf_file
         self.rmsd_thresh = rmsd_thresh
+        self.use_ref_and_slope = use_ref_and_slope
 
         # ------------------------------------------------------------
         # 1. Read PMFs: history vs single
@@ -231,6 +233,18 @@ class PMFAnalyzer:
         1) If rmsd_thresh is set: first index where raw RMSD < rmsd_thresh.
         2) Else: use slope of fitted RMSD (optionally combined with sampling).
         """
+
+        # NEW: combined reference-RMSD + slope criterion
+        if self.use_ref_and_slope and self.reference_pmf is not None:
+            if np.isnan(self.rmsd_fit).all():
+                return None
+
+            slope = np.gradient(self.rmsd_fit, self.t)
+
+            for idx, (raw_rmsd, s) in enumerate(zip(self.rmsd_raw, slope)):
+                if raw_rmsd < self.rmsd_thresh and abs(s) < self.slope_thresh:
+                    return self.t[idx]
+
         # 1) Fixed RMSD threshold (highest priority)
         if self.rmsd_thresh is not None:
             for idx, val in enumerate(self.rmsd_raw):
@@ -258,6 +272,7 @@ class PMFAnalyzer:
                 mean_std = np.mean([np.std(w) for w in window])
                 if mean_std < self.count_std_thresh:
                     return self.t[idx]
+
 
         return None
 
@@ -584,6 +599,8 @@ def main():
     parser.add_argument('--use-sliding-window', action='store_true')
     parser.add_argument('--counts-std-thresh', type=float, default=None)
     parser.add_argument('--reference-pmf', type=str, default=None)
+    parser.add_argument('--use-ref-and-slope', action='store_true',
+                        help='Convergence requires both RMSD<rmsd_thresh and slope<slope_thresh')
 
     args = parser.parse_args()
 
@@ -595,7 +612,8 @@ def main():
         use_sliding_window=args.use_sliding_window,
         count_std_thresh=args.counts_std_thresh,
         reference_pmf_file=args.reference_pmf,
-        rmsd_thresh=args.rmsd_threshold
+        rmsd_thresh=args.rmsd_threshold,
+        use_ref_and_slope=args.use_ref_and_slope
     )
 
     # Primary combined figure (existing behavior)
