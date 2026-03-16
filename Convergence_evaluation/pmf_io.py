@@ -125,17 +125,35 @@ def read_sequential_counts(filename):
 
 def interpolate_pmf(src_coords, src_pmf, target_coords):
     """
-    Interpolate PMF from src_coords → target_coords.
-    Handles ND.
+    Interpolate PMF from src_coords → target_coords or to a new uniform grid.
 
-    Returns:
-        new_pmf : interpolated PMF on target_coords
-                  (NaNs only if target is outside src domain)
+    Usage:
+      - target_coords is a tuple/list of coordinate arrays:
+          returns: new_pmf (same behaviour as before)
+      - target_coords is an int (n_points):
+          generates uniform grids with n_points along each src dimension
+          returns: (coords_tuple, new_pmf)  <-- for callers that need the grid (e.g. buildref.run)
+
+    Notes:
+      - If grids match exactly and target_coords is a sequence, returns src_pmf.
+      - If interpolation falls outside the source domain, result may contain NaNs.
     """
-    # If grids match exactly, skip interpolation
+    # If caller requested an integer n_points, build a uniform target grid
+    need_return_coords = False
+    if isinstance(target_coords, (int, np.integer)):
+        n_points = int(target_coords)
+        target_coords = tuple(
+            np.linspace(np.min(sc), np.max(sc), n_points) for sc in src_coords
+        )
+        need_return_coords = True
+
+    # Now target_coords should be a sequence of arrays; safe to use len()
+    # If grids match exactly, return the original PMF (preserve previous behaviour)
     if len(src_coords) == len(target_coords) and all(
         np.array_equal(sc, tc) for sc, tc in zip(src_coords, target_coords)
     ):
+        if need_return_coords:
+            return target_coords, src_pmf
         return src_pmf
 
     interpolator = RegularGridInterpolator(
@@ -147,9 +165,8 @@ def interpolate_pmf(src_coords, src_pmf, target_coords):
 
     new_pmf = interpolator(points).reshape([len(c) for c in target_coords])
 
-    # IMPORTANT: no NaN → max+50 here.
-    # If domains match, you get no NaNs.
-    # If not, NaNs will be ignored via nanmean in RMSD.
+    if need_return_coords:
+        return target_coords, new_pmf
     return new_pmf
 
 

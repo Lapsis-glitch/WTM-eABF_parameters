@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.interpolate import RegularGridInterpolator
+
+# Reuse interpolation / IO utilities from pmf_io to avoid duplication
+from pmf_io import interpolate_pmf, write_sequential_pmf
 
 kB = 0.008314462618  # kJ/mol/K
 
@@ -10,83 +12,21 @@ kB = 0.008314462618  # kJ/mol/K
 # ============================================================
 
 def pmf_to_prob(F, T):
+    """Convert PMF (kJ/mol) to a normalized probability distribution at temperature T."""
     beta = 1.0 / (kB * T)
     P = np.exp(-beta * F)
     return P / np.sum(P)
 
 
 def prob_to_pmf(P, T):
+    """Convert probability distribution to PMF; shift to zero minimum."""
     beta = 1.0 / (kB * T)
     F = -1.0 / beta * np.log(P)
     return F - np.min(F)
 
 
-# ============================================================
-# 2. Interpolation to uniform grid (N-dimensional)
-# ============================================================
-
-def interpolate_pmf(coords_tuple, pmf, n_points):
-    new_coords = [np.linspace(c[0], c[-1], n_points) for c in coords_tuple]
-    new_coords_tuple = tuple(new_coords)
-
-    interpolator = RegularGridInterpolator(
-        coords_tuple, pmf, bounds_error=False, fill_value=np.nan
-    )
-
-    mesh = np.meshgrid(*new_coords_tuple, indexing="ij")
-    points = np.stack([m.flatten() for m in mesh], axis=-1)
-
-    new_pmf = interpolator(points).reshape([n_points] * len(coords_tuple))
-
-    # Replace NaNs with large values
-    nan_mask = np.isnan(new_pmf)
-    if np.any(nan_mask):
-        new_pmf[nan_mask] = np.nanmax(new_pmf) + 50.0
-
-    return new_coords_tuple, new_pmf
-
-
-# ============================================================
-# 3. Write PMF in sequential format
-# ============================================================
-
-def write_sequential_pmf(coords_tuple, pmf, filename):
-    """
-    For ND:
-      - header with dimension metadata
-      - data rows in nested order
-      - blank line after each sweep of the first dimension (i index)
-    For 1D:
-      - no blank blank lines between rows.
-    """
-    ndim = len(coords_tuple)
-    shape = pmf.shape
-
-    starts = [c[0] for c in coords_tuple]
-    steps = [(c[1] - c[0]) if len(c) > 1 else 0.0 for c in coords_tuple]
-    sizes = [len(c) for c in coords_tuple]
-
-    with open(filename, "w") as f:
-        f.write(f"# {ndim}\n")
-        for start, step, size in zip(starts, steps, sizes):
-            f.write(f"# {start: .14e}  {step: .14e}  {size:8d}  1\n")
-        f.write("\n")
-
-        if ndim == 1:
-            # Simple 1D: no blank lines between rows
-            x = coords_tuple[0]
-            for i in range(shape[0]):
-                f.write(f"{x[i]: .14e}   {pmf[i]: .14e}\n")
-        else:
-            # ND: blank line after each sweep of the first dimension
-            for i in range(shape[0]):
-                it = np.nditer(pmf[i], flags=['multi_index'])
-                for val in it:
-                    idx = (i,) + it.multi_index
-                    coords = [coords_tuple[d][idx[d]] for d in range(ndim)]
-                    f.write("  ".join(f"{c: .14e}" for c in coords) + f"   {val: .14e}\n")
-                f.write("\n")
-
+# Note: interpolate_pmf and write_sequential_pmf are imported from pmf_io above.
+# This file focuses on the statistical aggregation + plotting pipeline.
 
 # ============================================================
 # 4. Unified plotting function (1D only)
@@ -171,7 +111,7 @@ def compute_reference_pmf_with_outliers(
     P_all_std = np.std(P_stack, axis=0)
     F_all = prob_to_pmf(P_all, T)
     beta = 1.0 / (kB * T)
-    F_all_err = (1.0 / beta) * (P_all_std / P_all)
+    F_all_err = (1.0 / beta) * (P_all_std / (P_all + 1e-12))
 
     # --- Outlier detection (N-dimensional safe) ---
     flat = P_stack.reshape(P_stack.shape[0], -1)
@@ -187,7 +127,7 @@ def compute_reference_pmf_with_outliers(
     P_filt = np.mean(P_kept, axis=0)
     P_filt_std = np.std(P_kept, axis=0)
     F_filt = prob_to_pmf(P_filt, T)
-    F_filt_err = (1.0 / beta) * (P_filt_std / P_filt)
+    F_filt_err = (1.0 / beta) * (P_filt_std / (P_filt + 1e-12))
 
     # --- Write PMFs + errors ---
     write_sequential_pmf(coords_tuple, F_median, f"{write_prefix}_median.pmf")

@@ -6,6 +6,7 @@ from scipy.optimize import curve_fit
 from scipy.ndimage import minimum_filter, maximum_filter
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+import os
 
 from pmf_io import (
     read_sequential_pmf,        # single PMF (new format)
@@ -21,7 +22,7 @@ class PMFAnalyzer:
 
     IO is delegated to pmf_io:
       - history PMFs: read_sequential_pmf_blocks
-      - single PMF:   read_sequential_pmf
+      - single PMF file:   read_sequential_pmf
       - counts:       read_sequential_counts
       - reference:    single PMF, interpolated to history grid
     """
@@ -198,10 +199,15 @@ class PMFAnalyzer:
     # ============================================================
 
     def _smooth_rmsd(self, rmsd, window_length=11, polyorder=3):
+        """Smooth RMSD time series with Savitzky-Golay; handle short series gracefully."""
         if len(rmsd) < 3:
             return rmsd
-        wl = min(window_length, len(rmsd) if len(rmsd) % 2 else len(rmsd) - 1)
-        return savgol_filter(rmsd, window_length=wl, polyorder=polyorder)
+        # choose the largest odd window <= len(rmsd) and <= window_length
+        max_wl = min(window_length, len(rmsd))
+        if max_wl % 2 == 0:
+            max_wl -= 1
+        wl = max(3, max_wl)
+        return savgol_filter(rmsd, window_length=wl, polyorder=min(polyorder, wl-1))
 
     def _exp_decay(self, t, A, B, C):
         return A * np.exp(-B * t) + C
@@ -377,38 +383,14 @@ class PMFAnalyzer:
         ax0.grid(True)
 
         # --- Sequential PMFs ---
-        if self.pmf_values[0].ndim == 1:
-            x = self.pmf_coords[0]
-            for i, pmf in enumerate(self.pmf_values):
-                color = 'black' if i == n - 1 else str(0.3 + 0.7 * i / (n - 1))
-                lw = 2 if i == n - 1 else 1
-                ax1.plot(x, pmf, color=color, linewidth=lw)
-            ax1.set_xlabel(r'$\xi$', fontsize=font_size)
-            ax1.set_ylabel('PMF', fontsize=font_size)
-        else:
-            X, Y = np.meshgrid(self.pmf_coords[0], self.pmf_coords[1], indexing='ij')
-            for i, pmf in enumerate(self.pmf_values):
-                color = 'black' if i == n - 1 else str(0.3 + 0.7 * i / (n - 1))
-                ax1.contour(X, Y, pmf, levels=20, colors=[color], linewidths=1)
-            ax1.set_xlabel('Coord 1', fontsize=font_size)
-            ax1.set_ylabel('Coord 2', fontsize=font_size)
+        self._plot_sequence(ax1, self.pmf_values, self.pmf_coords, title='Sequential PMFs')
 
         ax1.set_title('Sequential PMFs', fontsize=font_size)
         ax1.tick_params(labelsize=font_size)
         ax1.grid(True)
 
         # --- Sampling density evolution ---
-        if self.counts[0].ndim == 1:
-            x = self.count_coords[0]
-            for i, cnt in enumerate(self.normed_counts):
-                color = 'black' if i == n - 1 else str(0.3 + 0.7 * i / (n - 1))
-                lw = 2 if i == n - 1 else 1
-                ax2.plot(x, cnt, color=color, linewidth=lw)
-        else:
-            X, Y = np.meshgrid(self.count_coords[0], self.count_coords[1], indexing='ij')
-            for i, cnt in enumerate(self.normed_counts):
-                color = 'black' if i == n - 1 else str(0.3 + 0.7 * i / (n - 1))
-                ax2.contour(X, Y, cnt, levels=20, colors=[color], linewidths=1)
+        self._plot_sequence(ax2, self.normed_counts, self.count_coords, title='Sampling Evolution', is_count=True)
 
         ax2.set_title('Sampling Evolution', fontsize=font_size)
         ax2.set_xlabel(r'$\xi$', fontsize=font_size)
@@ -420,6 +402,7 @@ class PMFAnalyzer:
         if self.convergence_idx is not None:
             idx = next((i for i, t in enumerate(self.t) if t >= self.convergence_idx), None)
             if idx is not None:
+                # determine indices consistent with sliding-window logic
                 if self.use_sliding_window:
                     pmf_post = self.pmf_values[self.n_recent + idx]
                 else:
@@ -454,6 +437,128 @@ class PMFAnalyzer:
 
         plt.show()
 
+    # New helper: unify plotting of sequences (1D vs ND)
+    def _plot_sequence(self, ax, values_list, coords, title, cmap='viridis', is_count=False):
+        """
+        Generic plotting helper for sequences of 1D or 2D arrays.
+        - values_list: list of arrays (pmf or counts)
+        - coords: tuple of coordinate arrays
+        - ax: matplotlib axis
+        """
+        n = len(values_list)
+        last_idx = n - 1
+
+        if values_list[0].ndim == 1:
+            x = coords[0]
+            for i, arr in enumerate(values_list):
+                color = 'black' if i == last_idx else str(0.3 + 0.7 * i / max(1, last_idx))
+                lw = 2 if i == last_idx else 1
+                ax.plot(x, arr, color=color, linewidth=lw)
+            ax.set_xlabel(r'$\xi$' if not is_count else r'$\xi$')
+            ax.set_ylabel('Normalized Count' if is_count else 'PMF')
+        else:
+            X, Y = np.meshgrid(coords[0], coords[1], indexing='ij')
+            for i, arr in enumerate(values_list):
+                color = 'black' if i == last_idx else str(0.3 + 0.7 * i / max(1, last_idx))
+                try:
+                    ax.contour(X, Y, arr, levels=20, colors=[color], linewidths=1)
+                except Exception:
+                    # fallback to filled contour for complex grids
+                    ax.contourf(X, Y, arr, levels=30, cmap=cmap, alpha=0.6)
+            ax.set_xlabel('Coord 1')
+            ax.set_ylabel('Coord 2')
+
+        ax.set_title(title)
+
+    # ============================================================
+    # Plot single-snapshot (per-PMF) helper
+    # ============================================================
+    def plot_snapshot(self, idx, out_path=None, dpi=300, annotate=True, font_size=12, show=False):
+        """
+        Plot a single PMF snapshot (1D or 2D) with sampling counts overlay/adjacent.
+        - idx: integer index into self.pmf_values (0..N-1)
+        - out_path: path to save PNG (if None, will only show if show=True)
+        - annotate: if True and plotting the final snapshot, draw feature annotations
+        - font_size: base font size
+        - show: if True, call plt.show() after plotting
+        """
+        if idx < 0 or idx >= len(self.pmf_values):
+            raise IndexError("Snapshot index out of range")
+
+        pmf = self.pmf_values[idx]
+        coords = self.pmf_coords
+
+        # Counts: try to index same idx (counts and pmfs read from matching multi-block files)
+        cnt = None
+        if idx < len(self.normed_counts):
+            cnt = self.normed_counts[idx]
+
+        # 1D case: PMF + counts as side-by-side plots
+        if pmf.ndim == 1:
+            x = coords[0]
+            fig, (ax_pmf, ax_cnt) = plt.subplots(1, 2, figsize=(12, 4))
+            ax_pmf.plot(x, pmf, color='C0', lw=2)
+            ax_pmf.set_xlabel(r'$\xi$', fontsize=font_size)
+            ax_pmf.set_ylabel('PMF', fontsize=font_size)
+            ax_pmf.set_title(f'PMF snapshot {idx}', fontsize=font_size)
+
+            if cnt is not None:
+                ax_cnt.plot(x, cnt, color='C1', lw=2)
+                ax_cnt.set_xlabel(r'$\xi$', fontsize=font_size)
+                ax_cnt.set_ylabel('Normalized Count', fontsize=font_size)
+                ax_cnt.set_title(f'Sampling (snapshot {idx})', fontsize=font_size)
+            else:
+                ax_cnt.axis('off')
+
+            # annotate only for final snapshot (or when explicitly requested and it's final)
+            if annotate and idx == len(self.pmf_values) - 1:
+                try:
+                    self.annotate_comparison(ax_pmf, fs=font_size)
+                except Exception:
+                    pass
+
+            plt.tight_layout()
+
+        else:
+            # 2D: single panel with PMF contour and optional count overlay
+            fig, ax = plt.subplots(1, 1, figsize=(6, 5))
+            X, Y = np.meshgrid(coords[0], coords[1], indexing='ij')
+            try:
+                cf = ax.contourf(X, Y, pmf, levels=30, cmap='viridis')
+            except Exception:
+                cf = ax.contourf(X, Y, pmf, levels=20, cmap='viridis')
+            plt.colorbar(cf, ax=ax, label='PMF')
+            ax.set_xlabel('Coord 1', fontsize=font_size)
+            ax.set_ylabel('Coord 2', fontsize=font_size)
+            ax.set_title(f'PMF snapshot {idx}', fontsize=font_size)
+
+            if cnt is not None:
+                try:
+                    ax.contour(X, Y, cnt, levels=8, colors='k', linewidths=0.6, alpha=0.6)
+                except Exception:
+                    pass
+
+            if annotate and idx == len(self.pmf_values) - 1:
+                try:
+                    self.annotate_comparison(ax, fs=font_size)
+                except Exception:
+                    pass
+
+            plt.tight_layout()
+
+        # Save or show
+        if out_path is not None:
+            out_dir = os.path.dirname(out_path)
+            if out_dir and not os.path.exists(out_dir):
+                os.makedirs(out_dir, exist_ok=True)
+            fig.savefig(out_path, dpi=dpi, bbox_inches='tight')
+            plt.close(fig)
+        else:
+            if show:
+                plt.show()
+            else:
+                plt.close(fig)
+
 
 # ---- CLI ----
 def main():
@@ -468,6 +573,10 @@ def main():
 
     parser.add_argument('--save-path', type=str, default=None)
     parser.add_argument('--dpi', type=int, default=300)
+
+    # NEW: directory to save per-snapshot plots (optional)
+    parser.add_argument('--save-each', type=str, default=None,
+                        help='Directory to save per-snapshot plots (png). If set, saves all snapshots into this folder.')
 
     parser.add_argument('--conv-threshold', type=float, default=0.01)
     parser.add_argument('--rmsd-threshold', type=float, default=None)
@@ -489,6 +598,7 @@ def main():
         rmsd_thresh=args.rmsd_threshold
     )
 
+    # Primary combined figure (existing behavior)
     analyzer.plot(
         font_size=args.font_size,
         annotation_fs=args.annotation_fs,
@@ -496,6 +606,18 @@ def main():
         save_path=args.save_path,
         dpi=args.dpi,
     )
+
+    # NEW: save each snapshot individually if requested
+    if args.save_each is not None:
+        out_dir = args.save_each
+        os.makedirs(out_dir, exist_ok=True)
+        for i in range(len(analyzer.pmf_values)):
+            out_file = os.path.join(out_dir, f"pmf_snapshot_{i:04d}.png")
+            try:
+                analyzer.plot_snapshot(i, out_path=out_file, dpi=args.dpi, annotate=True, font_size=args.font_size)
+            except Exception as e:
+                # continue on errors but notify
+                print(f"Warning: failed to save snapshot {i}: {e}")
 
 
 if __name__ == '__main__':

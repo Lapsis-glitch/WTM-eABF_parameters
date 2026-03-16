@@ -4,35 +4,36 @@ from analyze_ND import PMFAnalyzer
 
 
 def parse(path, reference_pmf):
+    """Scan immediate subdirectories and evaluate convergence using PMFAnalyzer."""
     print(path)
 
-    with open(path + 'results.dat', 'w') as f:
+    results_file = os.path.join(path, 'results.dat')
+    with open(results_file, 'w') as f:
         for folder in os.listdir(path):
-
-            # Skip special folders
-            if folder.startswith('reference'):
+            # Skip special folders and non-directories
+            if folder.startswith(('reference', 'common')):
                 continue
-            if folder.startswith('common'):
-                continue
-            if not os.path.isdir(path + folder):
+            folder_path = os.path.join(path, folder)
+            if not os.path.isdir(folder_path):
                 continue
 
             try:
-                # Detect which filename prefix is present
-                if not os.path.isfile(path + folder + '/output/abf_00.abf1.hist.czar.pmf'):
-                    filename = path + folder + '/output/window1.abf1.hist.'
+                # Detect which filename prefix is present using os.path.join
+                candidate1 = os.path.join(folder_path, 'output', 'abf_00.abf1.hist.czar.pmf')
+                if os.path.isfile(candidate1):
+                    filename = os.path.join(folder_path, 'output', 'abf_00.abf1.hist.')
                 else:
-                    filename = path + folder + '/output/abf_00.abf1.hist.'
+                    filename = os.path.join(folder_path, 'output', 'window1.abf1.hist.')
 
                 analyzer = PMFAnalyzer(
                     filename + 'czar.pmf',
                     filename + 'count',
                     slope_thresh=0.01,
                     n_recent=5,
-                    use_sliding_window=False,      # NEW API
+                    use_sliding_window=False,
                     count_std_thresh=None,
                     reference_pmf_file=reference_pmf,
-                    rmsd_thresh=0.25               # optional: fixed RMSD threshold
+                    rmsd_thresh=0.25
                 )
 
                 print('{} {} {}'.format(*folder.split('_'), analyzer.convergence_idx))
@@ -42,14 +43,6 @@ def parse(path, reference_pmf):
                 print('{} {} {}'.format(*folder.split('_'), 'err'))
                 f.write('{} {} {}\n'.format(*folder.split('_'), 'err'))
 
-            # Optional plotting:
-            # analyzer.plot(
-            #     font_size=20,
-            #     annotation_fs=20,
-            #     show_annotations=False,
-            #     save_path=path + folder + 'convergence.png',
-            #     dpi=300,
-            # )
 
 
 if __name__ == "__main__":

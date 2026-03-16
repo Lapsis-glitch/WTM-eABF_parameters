@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 def main():
+    """Plot X-Y lines from results.dat, split by Name."""
     parser = argparse.ArgumentParser(
         description="Plot X-Y lines from results.dat, split by Name."
     )
@@ -23,14 +24,13 @@ def main():
     )
     args = parser.parse_args()
 
-    # Locate results.dat
-
-    if not os.path.isfile(args.file):
-        sys.exit(f"Error: results.dat not found in {args.folder}")
-    file = args.file
+    # Locate results file
+    file_path = args.file
+    if not os.path.isfile(file_path):
+        sys.exit(f"Error: results file not found: {file_path}")
 
     # Read file
-    df = pd.read_csv(file, sep=r"\s+", header=None, names=["Name", "X", "Y"])
+    df = pd.read_csv(file_path, sep=r"\s+", header=None, names=["Name", "X", "Y"])
 
     # Remove invalid Y values
     df = df[~df["Y"].isin(["None", "err"])]
