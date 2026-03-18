@@ -11,15 +11,18 @@ import numpy as np
 # CONFIGURATION
 # ============================================================
 
-parent_dir = "/home/rat/Nancy_D/ABF_parameter_test/deca_ala_seed"
+parent_dir = "/home/lia/gchen/WTM-eABF/deca_ala_seed_100ns/"
+parent_dir = "/home/lia/gchen/WTM-eABF/deca_ala_seed_12-32_10ns"
+parent_dir = "/home/lia/gchen/WTM-eABF/deca_ala_final/"
+pattern = "MTDwidth*"
 pmf_filename = "output/abf_00.abf1.hist.czar.pmf"
 count_filename = "output/abf_00.abf1.hist.zcount"
 
-parent_dir = "/home/rat/Nancy_D/ABF_parameter_test/ethanol_scripted"
-pmf_filename = "output/window1.abf1.hist.czar.pmf"
-count_filename = "output/window1.abf1.hist.zcount"
+#parent_dir = "/home/lia/gchen/WTM-eABF/ethanol_scripted_long"
+#pmf_filename = "output/window1.abf1.hist.czar.pmf"
+#count_filename = "output/window1.abf1.hist.zcount"
 
-reference_pmf = os.path.join(parent_dir, "reference_average_filtered.pmf")
+reference_pmf = os.path.join(parent_dir, "reference_median.pmf")
 
 n_recent = 4
 slope_thresh = 1e-3
@@ -45,6 +48,41 @@ def build_groups(base_dir):
         groups.setdefault(group, []).append((full_path, label))
     return groups
 
+from pathlib import Path
+
+def build_groups_from_pattern(pattern):
+    """
+    Use glob pattern to select folders and group them.
+    Grouping is based on removing _seed_X if present.
+    """
+    groups = {}
+
+    for path in Path().glob(pattern):
+        if not path.is_dir():
+            continue
+
+        name = path.name
+
+        if "reference" in name or "common" in name:
+            continue
+
+        # Remove _seed_X if present
+        if "_seed_" in name:
+            group_name = name.rsplit("_seed_", 1)[0]
+            label = name.split("_seed_")[-1]
+        else:
+            # fallback: split last underscore
+            parts = name.split("_")
+            if len(parts) > 1:
+                group_name = "_".join(parts[:-1])
+                label = parts[-1]
+            else:
+                group_name = name
+                label = name
+
+        groups.setdefault(group_name, []).append((str(path), label))
+
+    return groups
 
 def sort_group(folder_list):
     """Sort by numeric label when possible."""
@@ -106,8 +144,9 @@ def validate_and_collect(base_dir, groups):
 
 
 # ---- Main flow ----
-groups = build_groups(parent_dir)
-valid_groups = validate_and_collect(parent_dir, groups)
+#groups = build_groups(parent_dir)
+groups = build_groups_from_pattern(pattern)
+valid_groups = validate_and_collect(None, groups)
 
 if not valid_groups:
     print("No valid PMF/count folders found.")
@@ -155,4 +194,5 @@ for j in range(used_count, len(axes_list)):
     fig.delaxes(axes_list[j])
 
 plt.tight_layout()
+plt.savefig("rmsd.png")
 plt.show()
