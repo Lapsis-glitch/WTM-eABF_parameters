@@ -43,7 +43,8 @@ def parse(path, reference_pmf):
                 use_sliding_window=False,
                 count_std_thresh=None,
                 reference_pmf_file=reference_pmf,
-                rmsd_thresh=0.25,
+                #rmsd_thresh=0.25,
+                rmsd_thresh=0.592186869182,
                 use_ref_and_slope=True
             )
 
@@ -66,11 +67,13 @@ def parse(path, reference_pmf):
 
             mean_val = np.mean(clean_values)
             std_val = np.std(clean_values)
+            max_val = np.max(clean_values)
+            min_val = np.min(clean_values)
 
 
 
-            print(f"{base_name} {mean_val:.3f} {std_val:.3f} (n={len(clean_values)})")
-            f.write(f"{base_name} {mean_val:.3f} {std_val:.3f} {len(clean_values)}\n")
+            print(f"{base_name} {mean_val:.3f} {std_val:.3f} {min_val:.3f} {max_val:.3f} (n={len(clean_values)})")
+            f.write(f"{base_name} {mean_val:.3f} {std_val:.3f} {min_val:.3f} {max_val:.3f} {len(clean_values)}\n")
 
 
 if __name__ == "__main__":

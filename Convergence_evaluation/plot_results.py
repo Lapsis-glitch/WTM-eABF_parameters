@@ -68,14 +68,16 @@ def main():
         file_path,
         sep=r"\s+",
         header=None,
-        names=["Name", "Mean", "Std", "N"]
+        names=["Name", "Mean", "Std", "Min", "Max", "N"]
     )
 
     # Convert to numeric and scale
     df["Mean"] = pd.to_numeric(df["Mean"], errors="coerce") / args.divisor
     df["Std"] = pd.to_numeric(df["Std"], errors="coerce") / args.divisor
+    df["Min"] = pd.to_numeric(df["Min"], errors="coerce") / args.divisor
+    df["Max"] = pd.to_numeric(df["Max"], errors="coerce") / args.divisor
 
-    df = df.dropna(subset=["Mean", "Std"])
+    df = df.dropna(subset=["Mean", "Std", "Min", "Max"])
 
     # Optional: extract X from Name if needed
     # Assumes format like: something_X
@@ -132,19 +134,25 @@ def main():
             color=color,
             alpha=0.2
         )
+        
+        axes[i].fill_between(
+            group["X"],
+            group["Min"],
+            group["Max"],
+            color=colors[4],
+            alpha=0.2
+        )
 
         #axes[i].set_title(name)
         axes[i].grid(True, linestyle='-', color="lightgray", #alpha=0.6
         )
         axes[i].set_xlabel(labels[name])
 
-        if i % cols == 0:
-            axes[i].set_ylabel("Convergence (ns)")
 
     # Remove unused axes
     for j in range(i + 1, len(axes)):
         fig.delaxes(axes[j])
-
+    fig.supylabel("Convergence (ns)", fontsize=12)
     plt.tight_layout()
     fig.subplots_adjust(wspace=0.05)
     plt.savefig("convergence.png", dpi=400)
