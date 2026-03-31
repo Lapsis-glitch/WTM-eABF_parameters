@@ -3,13 +3,24 @@ import os
 import numpy as np
 from collections import defaultdict
 from analyze_ND import PMFAnalyzer
+import re
 
 
 def extract_base_name(folder):
-    """Remove _seed_X suffix."""
-    if "_seed_" in folder:
-        return folder.rsplit("_seed_", 1)[0]
-    return folder
+    """
+    Extract the parameter-value portion of a folder name.
+    Example: Parameter1_Value1_Parameter2_Value2_seed_42 -> Parameter1_Value1_Parameter2_Value2
+    """
+    # Remove the _seed_X suffix if present
+    folder_no_seed = folder.rsplit("_seed_", 1)[0]
+
+    # Optional: further clean folder name if you only want parameter-value pairs
+    # This regex keeps sequences like Param_Val_Param_Val
+    match = re.match(r"^([A-Za-z0-9.]+(?:_[A-Za-z0-9.]+)+)", folder_no_seed)
+    if match:
+        return match.group(1)
+    else:
+        return folder_no_seed  # fallback to whatever remains
 
 
 def parse(path, reference_pmf):
@@ -43,7 +54,6 @@ def parse(path, reference_pmf):
                 use_sliding_window=False,
                 count_std_thresh=None,
                 reference_pmf_file=reference_pmf,
-                #rmsd_thresh=0.25,
                 rmsd_thresh=0.592186869182,
                 use_ref_and_slope=True
             )
@@ -58,7 +68,6 @@ def parse(path, reference_pmf):
     results_file = os.path.join(path, 'results.dat')
     with open(results_file, 'w') as f:
         for base_name, values in grouped_results.items():
-            # Remove None or invalid entries
             clean_values = [v for v in values if v is not None]
 
             if len(clean_values) == 0:
@@ -69,8 +78,6 @@ def parse(path, reference_pmf):
             std_val = np.std(clean_values)
             max_val = np.max(clean_values)
             min_val = np.min(clean_values)
-
-
 
             print(f"{base_name} {mean_val:.3f} {std_val:.3f} {min_val:.3f} {max_val:.3f} (n={len(clean_values)})")
             f.write(f"{base_name} {mean_val:.3f} {std_val:.3f} {min_val:.3f} {max_val:.3f} {len(clean_values)}\n")
