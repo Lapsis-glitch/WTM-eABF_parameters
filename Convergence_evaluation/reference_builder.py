@@ -1,90 +1,96 @@
+"""
+reference_builder.py
+--------------------
+Statistical aggregation pipeline for building robust reference PMFs from
+multiple simulation replicas.
+
+Workflow
+--------
+1. Convert each PMF to a Boltzmann probability distribution.
+2. Compute **median**, **mean (all)**, and **mean (outlier-filtered)** PMFs.
+3. Detect outliers via MAD (Median Absolute Deviation) on RMSD-in-P-space.
+4. Write output PMFs + error envelopes, and generate comparison plots.
+
+IO utilities (``interpolate_pmf``, ``write_sequential_pmf``) are imported
+from ``pmf_io`` to avoid duplication.
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import os
-# Reuse interpolation / IO utilities from pmf_io to avoid duplication
-from pmf_io import interpolate_pmf, write_sequential_pmf
-import matplotlib
-import matplotlib.font_manager as font_manager
 
+from pmf_io import interpolate_pmf, write_sequential_pmf  # noqa: F401 (re-export)
+from plotting_config import configure_plotting
 
-kB = 0.008314462618  # kJ/mol/K
+configure_plotting()
+sns.set_palette("colorblind")
+
+# Boltzmann constant in kJ·mol⁻¹·K⁻¹
+kB = 0.008314462618
 
 
 # ============================================================
-# 1. PMF <-> Probability conversions
+# PMF ↔ probability conversions
 # ============================================================
 
-def pmf_to_prob(F, T):
-    """Convert PMF (kJ/mol) to a normalized probability distribution at temperature T."""
+def pmf_to_prob(F: np.ndarray, T: float) -> np.ndarray:
+    """Convert a PMF (kJ/mol) to a normalised Boltzmann probability at temperature *T*."""
     beta = 1.0 / (kB * T)
     P = np.exp(-beta * F)
     return P / np.sum(P)
 
 
-def prob_to_pmf(P, T):
-    """Convert probability distribution to PMF; shift to zero minimum."""
+def prob_to_pmf(P: np.ndarray, T: float) -> np.ndarray:
+    """Convert a probability distribution back to a PMF; shift minimum to zero."""
     beta = 1.0 / (kB * T)
     F = -1.0 / beta * np.log(P)
     return F - np.min(F)
 
 
-# Note: interpolate_pmf and write_sequential_pmf are imported from pmf_io above.
-# This file focuses on the statistical aggregation + plotting pipeline.
-
 # ============================================================
-# 4. Unified plotting function (1D only)
+# Plotting helpers
 # ============================================================
 
 def plot_pmf_set(
-    x,
-    F_median,
+    x, F_median,
     F_all, F_all_err,
     F_filt, F_filt_err,
-    deviations,
-    cutoff,
-    prefix="reference"
+    deviations, cutoff,
+    prefix="reference",
 ):
-    """Unified plotting for all PMF curves + outlier diagnostics."""
-    def load_matplotlib_local_fonts():
+    """
+    Produce two figures:
+      * PMF comparison (median / all-average / filtered-average ± error).
+      * Outlier diagnostics (per-simulation deviation from median).
 
-        # Load a font from TTF file, 
-        # relative to this Python module
-        # https://stackoverflow.com/a/69016300/315168
-        #font_path = os.path.join(os.path.dirname(__file__), '/home/lia/gchen/miniconda3/envs/nn4/fonts/arial.ttf')
-        font_path = '/home/lia/gchen/miniconda3/envs/nn/fonts/arial.ttf'
-        assert os.path.exists(font_path)
-        font_manager.fontManager.addfont(font_path)
-        prop = font_manager.FontProperties(fname=font_path)
-
-        #  Set it as default matplotlib font
-        matplotlib.rc('font', family='sans-serif') 
-        matplotlib.rcParams.update({
-            'font.size': 12,
-            'font.sans-serif': prop.get_name(),
-        })
-    try:
-        load_matplotlib_local_fonts()
-    except:
-        pass
-    sns.set_palette("colorblind")
+    Parameters
+    ----------
+    x : 1-D array
+        Coordinate grid.
+    F_median, F_all, F_filt : 1-D arrays
+        The three reference PMF variants.
+    F_all_err, F_filt_err : 1-D arrays
+        Standard-error envelopes.
+    deviations : 1-D array
+        Per-simulation RMSD from the median in probability space.
+    cutoff : float
+        MAD-based outlier threshold.
+    prefix : str
+        Output file prefix (without extension).
+    """
     colors = sns.color_palette("colorblind")
 
-    # --- PMF comparison plot ---
+    # --- PMF comparison ---
     plt.figure(figsize=(3.25, 3))
     plt.plot(x, F_median, label="Median", linewidth=2, color=colors[0])
-    plt.plot(x, F_all, '--', label="Average (all)", linewidth=2, color=colors[2])
-    plt.plot(x, F_filt, '-.', label="Average (filtered)", linewidth=2, color=colors[1])
-
+    plt.plot(x, F_all, "--", label="Average (all)", linewidth=2, color=colors[2])
+    plt.plot(x, F_filt, "-.", label="Average (filtered)", linewidth=2, color=colors[1])
     plt.fill_between(x, F_all - F_all_err, F_all + F_all_err,
                      alpha=0.4, color="lightgray", label="Error (all)")
     plt.fill_between(x, F_filt - F_filt_err, F_filt + F_filt_err,
                      alpha=0.2, color=colors[1], label="Error (filtered)")
-
-    #plt.xlabel("d (Å)")
-    plt.xlabel("z (Å)")
+    plt.xlabel("Coordinate")
     plt.ylabel("PMF (kcal/mol)")
-    #plt.title("Reference PMFs: Median vs Averages")
     plt.ylim(-0.1, None)
     plt.legend(fontsize=9)
     plt.tight_layout()
@@ -93,8 +99,8 @@ def plot_pmf_set(
 
     # --- Outlier diagnostics ---
     plt.figure(figsize=(7, 5))
-    plt.plot(deviations, 'o', label="Deviation from median")
-    plt.axhline(cutoff, color='red', linestyle='--', label="Outlier cutoff")
+    plt.plot(deviations, "o", label="Deviation from median")
+    plt.axhline(cutoff, color="red", linestyle="--", label="Outlier cutoff")
     plt.xlabel("Simulation index")
     plt.ylabel("Deviation (RMSD in P-space)")
     plt.title("Outlier Diagnostics (MAD-based)")
@@ -105,44 +111,57 @@ def plot_pmf_set(
 
 
 # ============================================================
-# 5. Main: median + all-average + filtered-average PMFs
+# Main pipeline
 # ============================================================
 
 def compute_reference_pmf_with_outliers(
-    coords_tuple,
-    F_list,
-    T,
+    coords_tuple, F_list, T,
     mad_cut=3.5,
-    write_prefix="reference"
+    write_prefix="reference",
 ):
     """
-    Full pipeline:
-    - Convert PMFs to probabilities
-    - Compute:
-        * Median PMF
-        * Average PMF over ALL simulations (+ error)
-        * Average PMF over NON-OUTLIER simulations (+ error)
-    - Outliers detected via MAD on deviation from median
-    - Write three PMFs + their errors (for averages)
-    - Unified plotting
-    """
+    Full aggregation pipeline:
 
-    # Convert to probabilities
+    1. Convert each PMF → probability.
+    2. Compute median, all-average, and outlier-filtered average PMFs.
+    3. Detect outliers via MAD on deviation from the median (in P-space).
+    4. Write three PMFs + error envelopes to disk.
+    5. Generate comparison / diagnostic plots (1-D only).
+
+    Parameters
+    ----------
+    coords_tuple : tuple of 1-D arrays
+        Coordinate grid (one array per dimension).
+    F_list : list of N-D arrays
+        PMF values from each replica.
+    T : float
+        Temperature in Kelvin.
+    mad_cut : float
+        Number of MAD units for outlier rejection.
+    write_prefix : str
+        Path prefix for output files.
+
+    Returns
+    -------
+    dict with keys: F_median, F_all, F_all_err, F_filtered, F_filtered_err,
+                    keep_mask, deviations, cutoff.
+    """
+    # Convert PMFs → probability distributions
     P_list = [pmf_to_prob(F, T) for F in F_list]
     P_stack = np.stack(P_list, axis=0)
 
-    # --- Median ---
+    # --- Median PMF ---
     P_median = np.median(P_stack, axis=0)
     F_median = prob_to_pmf(P_median, T)
 
-    # --- Average over ALL ---
+    # --- All-average PMF ---
     P_all = np.mean(P_stack, axis=0)
     P_all_std = np.std(P_stack, axis=0)
     F_all = prob_to_pmf(P_all, T)
     beta = 1.0 / (kB * T)
     F_all_err = (1.0 / beta) * (P_all_std / (P_all + 1e-12))
 
-    # --- Outlier detection (N-dimensional safe) ---
+    # --- Outlier detection (MAD in flattened P-space) ---
     flat = P_stack.reshape(P_stack.shape[0], -1)
     flat_median = P_median.reshape(-1)
     deviations = np.sqrt(np.mean((flat - flat_median) ** 2, axis=1))
@@ -152,32 +171,28 @@ def compute_reference_pmf_with_outliers(
     cutoff = med_dev + mad_cut * mad
     keep_mask = deviations < cutoff
 
+    # --- Filtered-average PMF ---
     P_kept = P_stack[keep_mask]
     P_filt = np.mean(P_kept, axis=0)
     P_filt_std = np.std(P_kept, axis=0)
     F_filt = prob_to_pmf(P_filt, T)
     F_filt_err = (1.0 / beta) * (P_filt_std / (P_filt + 1e-12))
 
-    # --- Write PMFs + errors ---
+    # --- Write output PMFs ---
     write_sequential_pmf(coords_tuple, F_median, f"{write_prefix}_median.pmf")
-
     write_sequential_pmf(coords_tuple, F_all, f"{write_prefix}_average_all.pmf")
     write_sequential_pmf(coords_tuple, F_all_err, f"{write_prefix}_average_all_err.pmf")
-
     write_sequential_pmf(coords_tuple, F_filt, f"{write_prefix}_average_filtered.pmf")
     write_sequential_pmf(coords_tuple, F_filt_err, f"{write_prefix}_average_filtered_err.pmf")
 
-    # --- Plotting (1D only) ---
+    # --- Plots (1-D only) ---
     if len(coords_tuple) == 1:
-        x = coords_tuple[0]
         plot_pmf_set(
-            x,
-            F_median,
+            coords_tuple[0], F_median,
             F_all, F_all_err,
             F_filt, F_filt_err,
-            deviations,
-            cutoff,
-            prefix=write_prefix
+            deviations, cutoff,
+            prefix=write_prefix,
         )
 
     return {
@@ -190,3 +205,4 @@ def compute_reference_pmf_with_outliers(
         "deviations": deviations,
         "cutoff": cutoff,
     }
+

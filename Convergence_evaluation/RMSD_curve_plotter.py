@@ -1,77 +1,47 @@
 #!/usr/bin/env python3
-import os
+"""
+RMSD_curve_plotter.py
+---------------------
+Overlay RMSD convergence curves from multiple simulation folders, grouped by
+a glob pattern.  Folders matching the pattern are grouped by stripping the
+``_seed_X`` suffix (or by splitting at the last ``_``).
+Usage
+-----
+::
+    python RMSD_curve_plotter.py --pattern "MTDwidth*" \\
+        --pmf output/abf_00.abf1.hist.czar.pmf \\
+        --counts output/abf_00.abf1.hist.zcount \\
+        --reference reference_median.pmf
+"""
+import argparse
 import math
+import os
+from pathlib import Path
 import matplotlib.pyplot as plt
-from pathlib import Path
-from analyze_ND import PMFAnalyzer
 import numpy as np
-
-
+from analyze_ND import PMFAnalyzer
+from plotting_config import configure_plotting
+configure_plotting()
 # ============================================================
-# CONFIGURATION
+# Helpers
 # ============================================================
-
-parent_dir = "/home/lia/gchen/WTM-eABF/deca_ala_seed_100ns/"
-parent_dir = "/home/lia/gchen/WTM-eABF/deca_ala_seed_12-32_10ns"
-parent_dir = "/home/lia/gchen/WTM-eABF/deca_ala_final/"
-pattern = "MTDwidth*"
-pmf_filename = "output/abf_00.abf1.hist.czar.pmf"
-count_filename = "output/abf_00.abf1.hist.zcount"
-
-#parent_dir = "/home/lia/gchen/WTM-eABF/ethanol_scripted_long"
-#pmf_filename = "output/window1.abf1.hist.czar.pmf"
-#count_filename = "output/window1.abf1.hist.zcount"
-
-reference_pmf = os.path.join(parent_dir, "reference_median.pmf")
-
-n_recent = 4
-slope_thresh = 1e-3
-rmsd_thresh = 0.01
-min_frames = 6
-use_sliding = False
-
-
-# ---- Helpers ----
-
-def build_groups(base_dir):
-    """Scan base_dir and group folders by prefix before the first underscore."""
-    groups = {}
-    for entry in os.listdir(base_dir):
-        full_path = os.path.join(base_dir, entry)
-        if not os.path.isdir(full_path):
-            continue
-        if "reference" in entry or "common" in entry:
-            continue
-        if "_" not in entry:
-            continue
-        group, label = entry.split("_", 1)
-        groups.setdefault(group, []).append((full_path, label))
-    return groups
-
-from pathlib import Path
-
-def build_groups_from_pattern(pattern):
+def build_groups(pattern: str):
     """
-    Use glob pattern to select folders and group them.
-    Grouping is based on removing _seed_X if present.
+    Glob *pattern* for directories and group them.
+    Grouping strips ``_seed_X`` when present; otherwise splits on the last
+    underscore.  Returns ``{group_name: [(path, label), ...]}``.
     """
-    groups = {}
-
-    for path in Path().glob(pattern):
+    groups: dict[str, list[tuple[str, str]]] = {}
+    for path in sorted(Path().glob(pattern)):
         if not path.is_dir():
             continue
-
         name = path.name
-
         if "reference" in name or "common" in name:
             continue
-
-        # Remove _seed_X if present
         if "_seed_" in name:
             group_name = name.rsplit("_seed_", 1)[0]
             label = name.split("_seed_")[-1]
         else:
-            # fallback: split last underscore
             parts = name.split("_")
             if len(parts) > 1:
                 group_name = "_".join(parts[:-1])
@@ -79,120 +49,108 @@ def build_groups_from_pattern(pattern):
             else:
                 group_name = name
                 label = name
-
         groups.setdefault(group_name, []).append((str(path), label))
-
     return groups
-
 def sort_group(folder_list):
-    """Sort by numeric label when possible."""
+    """Sort entries by numeric label when possible."""
     def key(item):
         try:
             return float(item[1])
-        except Exception:
+        except (ValueError, TypeError):
             return item[1]
     return sorted(folder_list, key=key)
-
-
-def validate_and_collect(base_dir, groups):
+def validate_and_collect(groups, pmf_rel, count_rel, ref_pmf,
+                         n_recent, slope_thresh, rmsd_thresh,
+                         use_sliding, min_frames):
     """
-    For each group, keep only folders that have both PMF and count files
-    and produce a PMFAnalyzer (cached) for reuse.
-    Returns dict: group_name -> [(folder_path, label, analyzer), ...]
+    Filter groups to folders that have valid PMF + count files and create
+    :class:`PMFAnalyzer` instances (cached).
+    Returns ``{group: [(path, label, analyzer), ...]}``.
     """
-    analyzers_cache = {}
-    valid_groups = {}
+    cache: dict[tuple, PMFAnalyzer] = {}
+    valid: dict[str, list] = {}
     for group_name, folders in groups.items():
         cleaned = []
         for folder_path, label in folders:
-            pmf_path = os.path.join(folder_path, pmf_filename)
-            count_path = os.path.join(folder_path, count_filename)
+            pmf_path = os.path.join(folder_path, pmf_rel)
+            count_path = os.path.join(folder_path, count_rel)
             if not (os.path.exists(pmf_path) and os.path.exists(count_path)):
                 continue
-
             key = (pmf_path, count_path)
-            if key in analyzers_cache:
-                analyzer = analyzers_cache[key]
-            else:
+            if key not in cache:
                 try:
-                    analyzer = PMFAnalyzer(
+                    cache[key] = PMFAnalyzer(
                         pmf_file=pmf_path,
                         count_file=count_path,
                         n_recent=n_recent,
                         slope_thresh=slope_thresh,
                         use_sliding_window=use_sliding,
-                        reference_pmf_file=reference_pmf,
-                        rmsd_thresh=rmsd_thresh
+                        reference_pmf_file=ref_pmf,
+                        rmsd_thresh=rmsd_thresh,
                     )
                 except Exception as e:
-                    # skip problematic folders
                     print(f"Skipping {folder_path}: {e}")
                     continue
-                analyzers_cache[key] = analyzer
-
+            analyzer = cache[key]
             if len(analyzer.rmsd_raw) < min_frames:
                 print(f"Skipping {folder_path}: only {len(analyzer.rmsd_raw)} frames")
                 continue
-
             cleaned.append((folder_path, label, analyzer))
-
         if cleaned:
-            # Preserve analyzers and keep sorted order (by label)
-            valid_groups[group_name] = sort_group(cleaned)
-
-    return valid_groups
-
-
-# ---- Main flow ----
-#groups = build_groups(parent_dir)
-groups = build_groups_from_pattern(pattern)
-valid_groups = validate_and_collect(None, groups)
-
-if not valid_groups:
-    print("No valid PMF/count folders found.")
-    exit()
-
-# Prepare subplot layout
-n_groups = len(valid_groups)
-n_cols = math.ceil(math.sqrt(n_groups))
-n_rows = math.ceil(n_groups / n_cols)
-
-fig_width = 4 * n_cols
-fig_height = 3 * n_rows
-
-fig, axes = plt.subplots(n_rows, n_cols, figsize=(fig_width, fig_height))
-
-# Normalize axes to a 1D list for easy indexing (handle ndarray, single Axes, list)
-if hasattr(axes, "flatten"):
-    axes_list = list(axes.flatten())
-elif isinstance(axes, (list, tuple)):
-    axes_list = list(axes)
-else:
-    axes_list = [axes]
-
-# Plot each group
-color_cycle = plt.get_cmap("tab10")
-
-group_items = list(valid_groups.items())
-used_count = len(group_items)
-
-for ax_idx, (group_name, folder_list) in enumerate(group_items):
-    ax = axes_list[ax_idx]
-    for idx, (folder_path, label, analyzer) in enumerate(folder_list):
-        # re-use analyzer already created in validation
-        ax.plot(analyzer.t, analyzer.rmsd_raw, label=label,
-                color=color_cycle(idx % 10), linewidth=1.5)
-
-    ax.set_title(f"{group_name} — RMSD Convergence")
-    ax.set_xlabel("Snapshot Index")
-    ax.set_ylabel("RMSD")
-    ax.legend(fontsize=8, loc='best')
-    ax.set_aspect('auto')
-
-# Hide unused axes (based on used_count)
-for j in range(used_count, len(axes_list)):
-    fig.delaxes(axes_list[j])
-
-plt.tight_layout()
-plt.savefig("rmsd.png")
-plt.show()
+            valid[group_name] = sort_group(cleaned)
+    return valid
+# ============================================================
+# Main
+# ============================================================
+def main():
+    parser = argparse.ArgumentParser(description="Overlay RMSD curves by group.")
+    parser.add_argument("--pattern", default="*",
+                        help="Glob pattern to match simulation folders (default: '*')")
+    parser.add_argument("--pmf", default="output/abf_00.abf1.hist.czar.pmf",
+                        help="Relative path to PMF file inside each folder")
+    parser.add_argument("--counts", default="output/abf_00.abf1.hist.zcount",
+                        help="Relative path to count file inside each folder")
+    parser.add_argument("--reference", default=None,
+                        help="Path to a reference PMF file")
+    parser.add_argument("--n-recent", type=int, default=4)
+    parser.add_argument("--slope-thresh", type=float, default=1e-3)
+    parser.add_argument("--rmsd-thresh", type=float, default=0.01)
+    parser.add_argument("--min-frames", type=int, default=6)
+    parser.add_argument("--use-sliding", action="store_true")
+    parser.add_argument("--output", default="rmsd.png",
+                        help="Output figure filename (default: rmsd.png)")
+    args = parser.parse_args()
+    groups = build_groups(args.pattern)
+    valid_groups = validate_and_collect(
+        groups, args.pmf, args.counts, args.reference,
+        args.n_recent, args.slope_thresh, args.rmsd_thresh,
+        args.use_sliding, args.min_frames,
+    )
+    if not valid_groups:
+        print("No valid PMF/count folders found.")
+        return
+    # ---- Subplot layout ----
+    n_groups = len(valid_groups)
+    n_cols = math.ceil(math.sqrt(n_groups))
+    n_rows = math.ceil(n_groups / n_cols)
+    fig, axes = plt.subplots(n_rows, n_cols,
+                             figsize=(4 * n_cols, 3 * n_rows))
+    axes_list = list(np.array(axes).flatten()) if n_groups > 1 else [axes]
+    cmap = plt.get_cmap("tab10")
+    for ax_idx, (group_name, folder_list) in enumerate(valid_groups.items()):
+        ax = axes_list[ax_idx]
+        for idx, (_, label, analyzer) in enumerate(folder_list):
+            ax.plot(analyzer.t, analyzer.rmsd_raw, label=label,
+                    color=cmap(idx % 10), linewidth=1.5)
+        ax.set_title(f"{group_name}")
+        ax.set_xlabel("Snapshot Index")
+        ax.set_ylabel("RMSD")
+        ax.legend(fontsize=8, loc="best")
+    # Hide unused axes
+    for j in range(len(valid_groups), len(axes_list)):
+        fig.delaxes(axes_list[j])
+    plt.tight_layout()
+    plt.savefig(args.output, dpi=300)
+    print(f"Saved {args.output}")
+if __name__ == "__main__":
+    main()

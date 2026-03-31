@@ -1,30 +1,82 @@
 #!/usr/bin/env python3
+"""
+analyze_ND.py
+-------------
+N-dimensional PMF convergence analyser.
+
+Provides :class:`PMFAnalyzer`, which reads a time-series of PMF snapshots
+and sampling counts, computes RMSD-based convergence diagnostics, and
+generates multi-panel summary plots.
+
+Convergence modes (selected via constructor arguments):
+
+* **Reference PMF** — RMSD of each snapshot to a user-supplied reference.
+* **Final PMF** — RMSD of each snapshot to the last snapshot.
+* **Sliding window** — RMSD of each snapshot to the mean of the previous
+  *n_recent* snapshots.
+
+The class also supports combined criteria (RMSD threshold + slope) and
+optional sampling-uniformity checks.
+
+Usage
+-----
+::
+
+    python analyze_ND.py pmf.hist.czar.pmf counts.hist.count \\
+        --reference-pmf reference_filtered.pmf --conv-threshold 0.01
+"""
+
 import argparse
-import numpy as np
-from scipy.signal import savgol_filter
-from scipy.optimize import curve_fit
-from scipy.ndimage import minimum_filter, maximum_filter
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 import os
 
+import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.ndimage import maximum_filter, minimum_filter
+from scipy.optimize import curve_fit
+from scipy.signal import savgol_filter
+
 from pmf_io import (
-    read_sequential_pmf,        # single PMF (new format)
-    read_sequential_pmf_blocks, # history PMFs (multi-block)
-    read_sequential_counts,     # history counts (multi-block)
-    interpolate_pmf             # interpolation
+    interpolate_pmf,
+    read_sequential_counts,
+    read_sequential_pmf,
+    read_sequential_pmf_blocks,
 )
 
 
 class PMFAnalyzer:
     """
-    Analysis-only class.
+    Analyse a time-series of PMF snapshots for convergence.
 
-    IO is delegated to pmf_io:
-      - history PMFs: read_sequential_pmf_blocks
-      - single PMF file:   read_sequential_pmf
-      - counts:       read_sequential_counts
-      - reference:    single PMF, interpolated to history grid
+    IO is delegated entirely to :mod:`pmf_io`.  This class focuses on
+    RMSD computation, convergence detection, feature annotation, and
+    multi-panel plotting.
+
+    Parameters
+    ----------
+    pmf_file : str
+        Path to a PMF history file (multi-block, ``#``-separated) **or** a
+        single PMF in the new header format.
+    count_file : str
+        Path to sampling-count history (same multi-block layout).
+    n_recent : int
+        Window size for the sliding-window RMSD mode.
+    slope_thresh : float
+        Absolute slope threshold on the fitted RMSD for convergence.
+    use_sliding_window : bool
+        If *True*, compute RMSD to the mean of the previous *n_recent*
+        snapshots.  Otherwise use the final or reference PMF.
+    count_std_thresh : float or None
+        If set, convergence also requires that the mean standard deviation
+        of normalised counts in a window falls below this value.
+    reference_pmf_file : str or None
+        Path to an external reference PMF.  When provided, RMSD is
+        computed against this reference rather than the final snapshot.
+    rmsd_thresh : float or None
+        Fixed RMSD threshold for convergence (highest priority when set).
+    use_ref_and_slope : bool
+        If *True*, convergence requires **both** ``rmsd < rmsd_thresh``
+        **and** ``|slope| < slope_thresh``.
     """
 
     def __init__(self, pmf_file, count_file,

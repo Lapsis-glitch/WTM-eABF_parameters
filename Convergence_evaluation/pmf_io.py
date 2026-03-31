@@ -1,3 +1,23 @@
+"""
+pmf_io.py
+---------
+IO utilities for reading, writing, and interpolating Potential of Mean Force
+(PMF) data files used by the Colvars ABF module.
+
+Two file formats are supported:
+
+* **New (header) format** — single PMF with an ``# N`` header specifying
+  dimensionality and grid parameters.  Read by :func:`read_sequential_pmf`,
+  written by :func:`write_sequential_pmf`.
+
+* **Old (multi-block) format** — multiple PMF snapshots in one file,
+  separated by ``#`` lines.  Read by :func:`read_sequential_pmf_blocks`
+  and :func:`read_sequential_counts`.
+
+:func:`interpolate_pmf` maps a PMF from one coordinate grid to another
+(or to a uniform grid specified by an integer point count).
+"""
+
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
 
