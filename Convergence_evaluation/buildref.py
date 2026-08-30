@@ -1,143 +1,103 @@
 #!/usr/bin/env python3
-import os
+"""Build robust reference PMFs from explicit, manifest, or discovered runs."""
+
+from __future__ import annotations
+
 import argparse
+import logging
+from pathlib import Path
+
 import numpy as np
 
-from reference_builder import (
-    interpolate_pmf,
-    write_sequential_pmf,
-    compute_reference_pmf_with_outliers,
-)
+try:
+    from .input_discovery import records_from_inputs
+    from .outputs import analysis_output
+    from .plotting import PlotConfig, add_plotting_arguments, config_from_args
+    from .pmf_io import interpolate_pmf
+    from .reference_builder import compute_reference_pmf_with_outliers, render_reference_figures
+except ImportError:
+    from input_discovery import records_from_inputs
+    from outputs import analysis_output
+    from plotting import PlotConfig, add_plotting_arguments, config_from_args
+    from pmf_io import interpolate_pmf
+    from reference_builder import compute_reference_pmf_with_outliers, render_reference_figures
 
-# ------------------------------------------------------------
-# Helper: read PMFs in sequential format
-# ------------------------------------------------------------
 
 def read_sequential_pmf_file(filename):
-    """
-    Reads a single PMF file in your sequential format.
-    Returns (coords_tuple, pmf_array).
-    """
-    tmp = []
-    coords_tuple = None
-    pmf = None
-
-    with open(filename, "r") as f:
-        for line in f:
+    """Read the legacy single-PMF sequential format used by existing data."""
+    blocks, current = [], []
+    with Path(filename).open() as handle:
+        for line in handle:
             if line.startswith("#"):
-                if tmp:
-                    arr = np.array(tmp, float)
-                    coords = [np.unique(arr[:, i]) for i in range(arr.shape[1]-1)]
-                    shape = tuple(len(c) for c in coords)
-                    pmf = arr[:, -1].reshape(shape)
-                    coords_tuple = tuple(coords)
-                    tmp = []
-                continue
-
-            if line.strip():
-                tmp.append(line.split())
-
-    if tmp:
-        arr = np.array(tmp, float)
-        coords = [np.unique(arr[:, i]) for i in range(arr.shape[1]-1)]
-        shape = tuple(len(c) for c in coords)
-        pmf = arr[:, -1].reshape(shape)
-        coords_tuple = tuple(coords)
-
-    return coords_tuple, pmf
+                if current:
+                    blocks.append(np.array(current, float))
+                    current = []
+            elif line.strip():
+                current.append(line.split())
+    if current:
+        blocks.append(np.array(current, float))
+    if not blocks:
+        raise ValueError(f"PMF file is empty: {filename}")
+    data = blocks[-1]
+    coords = tuple(np.unique(data[:, index]) for index in range(data.shape[1] - 1))
+    return coords, data[:, -1].reshape(tuple(len(item) for item in coords))
 
 
-# ------------------------------------------------------------
-# Main run function
-# ------------------------------------------------------------
-
-def run(base_dir, temperature=300, name="abf_00.abf1", n_points=100):
-    """
-    Look inside each immediate subdirectory of base_dir.
-    In each subdirectory, look for:
-        {name}.czar.pmf
-
-    Collect all PMFs, interpolate them to a common grid,
-    compute:
-        - median PMF
-        - average PMF (all)
-        - average PMF (filtered)
-    and save results + PNG plots.
-    """
-
-    pmf_filename = f"{name}.czar.pmf"
-    pmf_paths = []
-
-    # Scan subdirectories
-    for entry in os.listdir(base_dir):
-        subdir = os.path.join(base_dir, entry)
-        if os.path.isdir(subdir):
-            candidate = os.path.join(subdir, pmf_filename)
-            if os.path.isfile(candidate):
-                pmf_paths.append(candidate)
-
+def run(base_dir=None, temperature=300, name="abf_00.abf1", n_points=100, *,
+        output_root="Results", manifest=None, pmf_file=None, count_file=None,
+        pmf_pattern=None, count_pattern=None, metadata_regex=None, config=None):
+    pattern = pmf_pattern or f"**/{name}.czar.pmf"
+    discovered = records_from_inputs(root=base_dir if manifest is None and pmf_file is None else None,
+                                     manifest=manifest, pmf_file=pmf_file, count_file=count_file,
+                                     pmf_pattern=pattern, count_pattern=count_pattern,
+                                     metadata_regex=metadata_regex, require_count=False)
+    pmf_paths = [record.pmf_file for record in discovered.runs]
     if not pmf_paths:
-        print(f"No PMFs named {pmf_filename} found in subdirectories of {base_dir}")
-        return
-
-    print(f"Found {len(pmf_paths)} PMFs:")
-    for p in pmf_paths:
-        print("  ", p)
-
-    # Read + interpolate all PMFs
+        raise RuntimeError("No PMF files were discovered for reference construction")
     coords_tuple = None
-    F_list = []
-
+    values = []
     for path in pmf_paths:
-        coords, F = read_sequential_pmf_file(path)
-
-        # Interpolate to consistent grid
-        coords_interp, F_interp = interpolate_pmf(coords, F, n_points)
-
-        if coords_tuple is None:
-            coords_tuple = coords_interp
-        else:
-            if any(len(c1) != len(c2) for c1, c2 in zip(coords_tuple, coords_interp)):
-                print("Warning: grid mismatch after interpolation")
-
-        F_list.append(F_interp)
-
-    # --------------------------------------------------------
-    # Compute robust reference PMFs (median + averages)
-    # --------------------------------------------------------
-    results = compute_reference_pmf_with_outliers(
-        coords_tuple,
-        F_list,
-        T=temperature,
-        mad_cut=3.5,
-        write_prefix=os.path.join(base_dir, "reference")
-    )
-
-    print("Saved:")
-    print("  reference_median.pmf")
-    print("  reference_average_all.pmf")
-    print("  reference_average_filtered.pmf")
-    print("  reference_pmf_comparison.png")
-    print("  reference_outlier_diagnostics.png")
+        try:
+            coords, pmf = read_sequential_pmf_file(path)
+            interpolated_coords, interpolated = interpolate_pmf(coords, pmf, n_points)
+        except (OSError, ValueError, IndexError) as exc:
+            logging.warning("Skipping PMF %s: %s", path, exc)
+            continue
+        coords_tuple = coords_tuple or interpolated_coords
+        values.append(interpolated)
+    if not values:
+        raise RuntimeError("No usable PMFs remained for reference construction")
+    output = analysis_output(output_root, "reference_pmf")
+    data = compute_reference_pmf_with_outliers(coords_tuple, values, temperature,
+                                               write_prefix=output.directory / "reference")
+    render_reference_figures(data, coords_tuple, output_root=output_root,
+                             config=config or PlotConfig(output_root=str(output_root)))
+    return data
 
 
-# ------------------------------------------------------------
-# CLI entry point
-# ------------------------------------------------------------
+def main():
+    parser = argparse.ArgumentParser(description="Compute robust reference PMFs")
+    parser.add_argument("--dir", help="Input root for recursive discovery")
+    parser.add_argument("--manifest")
+    parser.add_argument("--pmf-file")
+    parser.add_argument("--count-file")
+    parser.add_argument("--temp", type=float, default=300)
+    parser.add_argument("--name", default="abf_00.abf1")
+    parser.add_argument("--pmf-pattern")
+    parser.add_argument("--count-pattern")
+    parser.add_argument("--metadata-regex")
+    parser.add_argument("--npoints", type=int, default=100)
+    add_plotting_arguments(parser)
+    args = parser.parse_args()
+    if not args.dir and not args.manifest and not args.pmf_file:
+        parser.error("provide --dir, --manifest, or --pmf-file")
+    config = config_from_args(args)
+    run(args.dir, temperature=args.temp, name=args.name, n_points=args.npoints,
+        output_root=config.output_root, manifest=args.manifest, pmf_file=args.pmf_file,
+        count_file=args.count_file, pmf_pattern=args.pmf_pattern,
+        count_pattern=args.count_pattern, metadata_regex=args.metadata_regex, config=config)
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Compute robust reference PMF from multiple simulations."
-    )
-    parser.add_argument("--dir", required=True,
-                        help="Base directory containing subdirectories with PMFs.")
-    parser.add_argument("--temp", type=float, default=300,
-                        help="Temperature in Kelvin (default: 300).")
-    parser.add_argument("--name", type=str, default="abf_00.abf1",
-                        help="Prefix of PMF files (default: abf_00.abf1).")
-    parser.add_argument("--npoints", type=int, default=100,
-                        help="Number of grid points per dimension (default: 100).")
-
-    args = parser.parse_args()
-
-    run(args.dir, temperature=args.temp, name=args.name, n_points=args.npoints)
+    logging.basicConfig(level=logging.INFO)
+    main()

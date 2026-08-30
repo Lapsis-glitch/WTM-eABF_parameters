@@ -1,162 +1,133 @@
 #!/usr/bin/env python3
+"""Plot structured convergence summaries with reusable PubReady panels."""
+
+from __future__ import annotations
+
 import argparse
-import os
-import sys
+import csv
 import math
-import pandas as pd
+from collections import defaultdict
+from pathlib import Path
+
 import matplotlib.pyplot as plt
-import seaborn as sns
-import matplotlib
-import matplotlib.font_manager as font_manager
-def load_matplotlib_local_fonts():
+from matplotlib.lines import Line2D
 
-    # Load a font from TTF file, 
-    # relative to this Python module
-    # https://stackoverflow.com/a/69016300/315168
-    #font_path = os.path.join(os.path.dirname(__file__), '/home/lia/gchen/miniconda3/envs/nn4/fonts/arial.ttf')
-    font_path = '/home/lia/gchen/miniconda3/envs/nn/fonts/arial.ttf'
-    assert os.path.exists(font_path)
-    font_manager.fontManager.addfont(font_path)
-    prop = font_manager.FontProperties(fname=font_path)
-
-    #  Set it as default matplotlib font
-    matplotlib.rc('font', family='sans-serif') 
-    matplotlib.rcParams.update({
-        'font.size': 12,
-        'font.sans-serif': prop.get_name(),
-    })
 try:
-    load_matplotlib_local_fonts()
-except:
-    pass
+    from .convergence_summary import read_summary
+    from .outputs import analysis_output
+    from .plotting import PlotConfig, add_plotting_arguments, close_figure, flatten_axes
+    from .plotting import make_figure, publication_style, save_figure
+except ImportError:
+    from convergence_summary import read_summary
+    from outputs import analysis_output
+    from plotting import PlotConfig, add_plotting_arguments, close_figure, flatten_axes
+    from plotting import make_figure, publication_style, save_figure
 
-labels = {"MTDheight": "hillWeight",
-          "MTDnewhill": "newHillFrequency",
-          "MTDtemp": "biasTemperature",
-          "MTDwidth": "hillWidth",
-          "colvarWidth": "colvarWidth",
-          "extDamp": "extendedLangevinDamping",
-          "extFluc": "extendedFluctuation",
-          "extTime": "extendedTimeConstant",
-          "fullSamp": "fullSamples",
-          }
+
+LABELS = {"MTDheight": "hillWeight", "MTDnewhill": "newHillFrequency",
+          "MTDtemp": "biasTemperature", "MTDwidth": "hillWidth",
+          "colvarWidth": "colvarWidth", "extDamp": "extendedLangevinDamping",
+          "extFluc": "extendedFluctuation", "extTime": "extendedTimeConstant",
+          "fullSamp": "fullSamples"}
+
+
+def _read_legacy(path):
+    rows = []
+    with Path(path).open() as handle:
+        for line in handle:
+            fields = line.split()
+            if len(fields) < 6:
+                continue
+            name, mean, std, minimum, maximum, n = fields[:6]
+            pieces = name.rsplit("_", 1)
+            if len(pieces) != 2:
+                continue
+            try:
+                value = float(pieces[1])
+                rows.append({"group": pieces[0], "parameter_name": pieces[0],
+                             "parameter_value": value, "parameter_values": {pieces[0]: value},
+                             "mean": float(mean), "std": float(std), "min": float(minimum),
+                             "max": float(maximum), "n": int(n)})
+            except ValueError:
+                continue
+    return rows
+
+
+def load_rows(path):
+    return read_summary(path) if Path(path).suffix.lower() == ".csv" else _read_legacy(path)
+
+
+def _value_sort(value):
+    try:
+        return 0, float(value)
+    except (TypeError, ValueError):
+        return 1, str(value)
+
+
+def plot_summary_panel(ax, rows, parameter_name, divisor=20.0):
+    grouped = defaultdict(list)
+    for row in rows:
+        params = row.get("parameter_values") or {}
+        if parameter_name not in params:
+            continue
+        grouped[str(row.get("group", "all"))].append(row)
+    color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    for color_index, (group, group_rows) in enumerate(sorted(grouped.items())):
+        valid = sorted(group_rows, key=lambda row: _value_sort(row["parameter_values"][parameter_name]))
+        x = [row["parameter_values"][parameter_name] for row in valid]
+        mean = [row["mean"] / divisor for row in valid]
+        std = [row["std"] / divisor for row in valid]
+        minimum = [row["min"] / divisor for row in valid]
+        maximum = [row["max"] / divisor for row in valid]
+        color = color_cycle[color_index % len(color_cycle)]
+        label = group if len(grouped) > 1 else None
+        ax.plot(x, mean, marker="o", color=color, label=label)
+        ax.fill_between(x, [m - s for m, s in zip(mean, std)], [m + s for m, s in zip(mean, std)], color=color, alpha=0.2)
+        ax.fill_between(x, minimum, maximum, color=color, alpha=0.1)
+    ax.set(xlabel=LABELS.get(parameter_name, parameter_name), ylabel="Convergence (ns)",
+           title=LABELS.get(parameter_name, parameter_name))
+    ax.grid(True, color="lightgray")
+    if len(grouped) > 1:
+        ax.legend(loc="best")
+    return ax
+
+
+def plot_summary(rows, *, output_root="Results", config=None, divisor=20.0):
+    config = config or PlotConfig(output_root=str(output_root))
+    names = sorted({name for row in rows for name in (row.get("parameter_values") or {})})
+    if not names:
+        raise RuntimeError("summary contains no parameter metadata; provide a manifest with parameter columns")
+    output = analysis_output(output_root, "convergence_summary")
+    with publication_style(config):
+        cols = min(3, max(1, math.ceil(math.sqrt(len(names)))))
+        rows_count = math.ceil(len(names) / cols)
+        fig, axes = make_figure(config, kind="multipanel", nrows=rows_count, ncols=cols, sharey=True)
+        axes_list = flatten_axes(axes)
+        for axis, name in zip(axes_list, names):
+            plot_summary_panel(axis, rows, name, divisor=divisor)
+        for axis in axes_list[len(names):]:
+            axis.set_visible(False)
+        save_figure(fig, output.figures / "convergence_summary_multipanel", config)
+        close_figure(fig)
+        for name in names:
+            panel_fig, panel_ax = make_figure(config, kind="panel")
+            plot_summary_panel(panel_ax, rows, name, divisor=divisor)
+            save_figure(panel_fig, output.panels / f"{name}_convergence", config)
+            close_figure(panel_fig)
+    return output.directory
+
 
 def main():
-    """Plot mean convergence with standard deviation error bars."""
-    parser = argparse.ArgumentParser(
-        description="Plot mean convergence with std deviation from results.dat."
-    )
-    parser.add_argument(
-        "file",
-        help="file containing results"
-    )
-    parser.add_argument(
-        "--divisor",
-        type=float,
-        default=20.0,
-        help="Divisor for Y values (default: 20)"
-    )
+    parser = argparse.ArgumentParser(description="Plot mean convergence with standard deviation")
+    parser.add_argument("file", help="CSV summary or legacy results.dat")
+    parser.add_argument("--divisor", type=float, default=20.0)
+    add_plotting_arguments(parser)
     args = parser.parse_args()
-
-    # Locate results file
-    file_path = args.file
-    if not os.path.isfile(file_path):
-        sys.exit(f"Error: results file not found: {file_path}")
-
-    # Read file (new format)
-    df = pd.read_csv(
-        file_path,
-        sep=r"\s+",
-        header=None,
-        names=["Name", "Mean", "Std", "Min", "Max", "N"]
-    )
-
-    # Convert to numeric and scale
-    df["Mean"] = pd.to_numeric(df["Mean"], errors="coerce") / args.divisor
-    df["Std"] = pd.to_numeric(df["Std"], errors="coerce") / args.divisor
-    df["Min"] = pd.to_numeric(df["Min"], errors="coerce") / args.divisor
-    df["Max"] = pd.to_numeric(df["Max"], errors="coerce") / args.divisor
-
-    df = df.dropna(subset=["Mean", "Std", "Min", "Max"])
-
-    # Optional: extract X from Name if needed
-    # Assumes format like: something_X
-    df["X"] = df["Name"].apply(lambda x: x.split("_")[-1])
-    df["X"] = pd.to_numeric(df["X"], errors="coerce")
-
-    # Drop rows where X couldn't be parsed
-    df = df.dropna(subset=["X"])
-
-    # Group by base name (everything except last part)
-    df["Base"] = df["Name"].apply(lambda x: "_".join(x.split("_")[:-1]))
-    groups = df.groupby("Base")
-
-    num_plots = len(groups)
-
-    cols = math.ceil(math.sqrt(num_plots))
-    rows = math.ceil(num_plots / cols)
-
-    sns.set_palette("colorblind")
-    colors = sns.color_palette("colorblind")
-    color = colors[0]
-
-    #fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows), sharey=True)
-    fig, axes = plt.subplots(rows, cols, figsize=(7, 7/ cols * rows), sharey=True)
-    axes = axes.flatten()
-
-    for i, (name, group) in enumerate(groups):
-        group = group.sort_values(by="X")
-
-        axes[i].plot(
-            group["X"],
-            group["Mean"],
-            #yerr=group["Std"],
-            marker='o',
-            linestyle='-',
-            color=color,
-            #capsize=4
-        )
-
-        axes[i].scatter(
-            group["X"].values[group["N"] < 3],
-            group["Mean"].values[group["N"] < 3],
-            #yerr=group["Std"],
-            marker='o',
-            color=colors[3],
-            #capsize=4
-            zorder=10,
-        )
-
-        axes[i].fill_between(
-            group["X"],
-            group["Mean"] - group["Std"],
-            group["Mean"] + group["Std"],
-            color=color,
-            alpha=0.2
-        )
-        
-        axes[i].fill_between(
-            group["X"],
-            group["Min"],
-            group["Max"],
-            color=colors[4],
-            alpha=0.2
-        )
-
-        #axes[i].set_title(name)
-        axes[i].grid(True, linestyle='-', color="lightgray", #alpha=0.6
-        )
-        axes[i].set_xlabel(labels[name])
-
-
-    # Remove unused axes
-    for j in range(i + 1, len(axes)):
-        fig.delaxes(axes[j])
-    fig.supylabel("Convergence (ns)", fontsize=12)
-    plt.tight_layout()
-    fig.subplots_adjust(wspace=0.05)
-    plt.savefig("convergence.png", dpi=400)
-    # plt.show()
+    config = PlotConfig(publisher=args.publisher, multipanel_target=args.multipanel_target,
+                        multipanel_fraction=args.multipanel_fraction, panel_target=args.panel_target,
+                        panel_fraction=args.panel_fraction, formats=tuple(args.figure_formats),
+                        dpi=args.dpi, output_root=args.output_root)
+    plot_summary(load_rows(args.file), output_root=args.output_root, config=config, divisor=args.divisor)
 
 
 if __name__ == "__main__":

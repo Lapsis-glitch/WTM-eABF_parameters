@@ -1,136 +1,92 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import os
-import re
+#!/usr/bin/env python3
+"""Render mean and standard-deviation convergence surfaces."""
+
+from __future__ import annotations
+
 import argparse
-import seaborn as sns
-import matplotlib
-import matplotlib.font_manager as font_manager
+from pathlib import Path
 
-def load_matplotlib_local_fonts():
+import matplotlib.pyplot as plt
+import numpy as np
 
-    # Load a font from TTF file, 
-    # relative to this Python module
-    # https://stackoverflow.com/a/69016300/315168
-    #font_path = os.path.join(os.path.dirname(__file__), '/home/lia/gchen/miniconda3/envs/nn4/fonts/arial.ttf')
-    font_path = '/home/lia/gchen/miniconda3/envs/nn/fonts/arial.ttf'
-    assert os.path.exists(font_path)
-    font_manager.fontManager.addfont(font_path)
-    prop = font_manager.FontProperties(fname=font_path)
-
-    #  Set it as default matplotlib font
-    matplotlib.rc('font', family='sans-serif') 
-    matplotlib.rcParams.update({
-        'font.size': 12,
-        'font.sans-serif': prop.get_name(),
-    })
 try:
-    load_matplotlib_local_fonts()
-except:
-    pass
-
-labels = {"MTDheight": "hillWeight",
-          "MTDnewhill": "newHillFrequency",
-          "MTDtemp": "biasTemperature",
-          "MTDwidth": "hillWidth",
-          "colvarWidth": "colvarWidth",
-          "extDamp": "extendedLangevinDamping",
-          "extFluc": "extendedFluctuation",
-          "extTime": "extendedTimeConstant",
-          "fullSamp": "fullSamples",
-          }
-
-"""Plot mean convergence with standard deviation error bars."""
-parser = argparse.ArgumentParser(
-    description="Plot mean convergence with std deviation from results.dat."
-)
-parser.add_argument(
-    "file",
-    default="results.dat",
-    help="file containing results"
-)
-parser.add_argument(
-    "--divisor",
-    type=float,
-    default=20.0,
-    help="Divisor for Y values (default: 20)"
-)
-args = parser.parse_args()
-
-# Locate results file
-results_file = args.file
-divisor = args.divisor
+    from .convergence_summary import read_summary
+    from .outputs import analysis_output
+    from .plotting import PlotConfig, add_plotting_arguments, close_figure, flatten_axes
+    from .plotting import make_figure, publication_style, save_figure
+except ImportError:
+    from convergence_summary import read_summary
+    from outputs import analysis_output
+    from plotting import PlotConfig, add_plotting_arguments, close_figure, flatten_axes
+    from plotting import make_figure, publication_style, save_figure
 
 
-# Lists to store extracted data
-param1_vals = []
-param2_vals = []
-mean_vals = []
-std_vals = []
+def _surface(ax, rows, x_name, y_name, field, divisor, cmap, label):
+    points = []
+    for row in rows:
+        parameters = row.get("parameter_values") or {}
+        if x_name in parameters and y_name in parameters:
+            points.append((float(parameters[x_name]), float(parameters[y_name]), float(row[field]) / divisor))
+    if not points:
+        raise RuntimeError(f"no rows contain selected parameters {x_name!r} and {y_name!r}")
+    x_values = np.array(sorted({point[0] for point in points}))
+    y_values = np.array(sorted({point[1] for point in points}))
+    grid = np.full((len(y_values), len(x_values)), np.nan)
+    for x, y, value in points:
+        grid[np.where(y_values == y)[0][0], np.where(x_values == x)[0][0]] = value
+    X, Y = np.meshgrid(x_values, y_values)
+    if len(x_values) > 1 and len(y_values) > 1:
+        mappable = ax.contourf(X, Y, grid, levels=40, cmap=cmap)
+    else:
+        mappable = ax.scatter([point[0] for point in points], [point[1] for point in points],
+                              c=[point[2] for point in points], cmap=cmap)
+    ax.set(xlabel=x_name, ylabel=y_name, title=label)
+    ax.figure.canvas.draw_idle()
+    import pubready as pr
+    pr.add_colorbar(ax.figure, mappable, ax=ax, location="right", label=label)
+    return ax
 
-# Regex to extract parameters from base_name
-# Allows decimal numbers for values
-param_pattern = re.compile(r"([A-Za-z0-9]+)_([0-9.]+)_([A-Za-z0-9]+)_([0-9.]+)")
 
-with open(results_file, 'r') as f:
-    for line in f:
-        parts = line.strip().split()
-        if len(parts) < 6:
-            continue  # skip invalid lines
-        base_name, mean, std, min_val, max_val, n = parts
-        match = param_pattern.match(base_name)
-        if not match:
-            continue  # skip if pattern doesn't match
-        # Extract parameters
-        param1_name, param1_value, param2_name, param2_value = match.groups()
-        try:
-            param1_vals.append(float(param1_value))
-            param2_vals.append(float(param2_value))
-            mean_vals.append(float(mean))
-            std_vals.append(float(std))
-        except ValueError:
-            continue  # skip if conversion fails
+def plot_surface(rows, x_name, y_name, *, output_root="Results", config=None, divisor=20.0):
+    config = config or PlotConfig(output_root=str(output_root))
+    output = analysis_output(output_root, "convergence_surface")
+    renderers = [("mean_convergence", "mean", "viridis", "Mean Convergence Time (ns)"),
+                 ("standard_deviation", "std", "magma", "Standard Deviation (ns)")]
+    with publication_style(config):
+        fig, axes = make_figure(config, kind="multipanel", ncols=2)
+        for axis, (_, field, cmap, label) in zip(flatten_axes(axes), renderers):
+            _surface(axis, rows, x_name, y_name, field, divisor, cmap, label)
+        save_figure(fig, output.figures / "convergence_surface_multipanel", config)
+        close_figure(fig)
+        for name, field, cmap, label in renderers:
+            panel_fig, panel_ax = make_figure(config, kind="panel")
+            _surface(panel_ax, rows, x_name, y_name, field, divisor, cmap, label)
+            save_figure(panel_fig, output.panels / name, config)
+            close_figure(panel_fig)
+    return output.directory
 
-# Create a grid for plotting
-param1_unique = np.unique(param1_vals)
-param2_unique = np.unique(param2_vals)
-param1_grid, param2_grid = np.meshgrid(param1_unique, param2_unique)
 
-# Initialize grids for mean and std
-mean_grid = np.full(param1_grid.shape, np.nan) 
-std_grid = np.full(param1_grid.shape, np.nan)
+def main():
+    parser = argparse.ArgumentParser(description="Plot 2D convergence surfaces")
+    parser.add_argument("file", help="Structured convergence_summary.csv")
+    parser.add_argument("--x-parameter")
+    parser.add_argument("--y-parameter")
+    parser.add_argument("--divisor", type=float, default=20.0)
+    add_plotting_arguments(parser)
+    args = parser.parse_args()
+    config = PlotConfig(publisher=args.publisher, multipanel_target=args.multipanel_target,
+                        multipanel_fraction=args.multipanel_fraction, panel_target=args.panel_target,
+                        panel_fraction=args.panel_fraction, formats=tuple(args.figure_formats),
+                        dpi=args.dpi, output_root=args.output_root)
+    rows = read_summary(args.file)
+    names = sorted({name for row in rows for name in (row.get("parameter_values") or {})})
+    if args.x_parameter is None or args.y_parameter is None:
+        if len(names) != 2:
+            parser.error("select --x-parameter and --y-parameter when the summary does not contain exactly two parameters")
+        args.x_parameter, args.y_parameter = names
+    plot_surface(rows, args.x_parameter, args.y_parameter,
+                 output_root=args.output_root, config=config, divisor=args.divisor)
 
-# Fill grids
-for x, y, m, s in zip(param1_vals, param2_vals, mean_vals, std_vals):
-    i = np.where(param2_unique == y)[0][0]
-    j = np.where(param1_unique == x)[0][0]
-    mean_grid[i, j] = m / divisor
-    std_grid[i, j] = s / divisor
 
-# Plotting
-fig, axes = plt.subplots(1, 2, figsize=(7, 3))
-
-# Mean convergence time
-#im0 = axes[0].imshow(mean_grid, origin='lower',
-#                     extent=[param1_unique.min(), param1_unique.max(),
-#                             param2_unique.min(), param2_unique.max()],
-#                     aspect='auto', cmap='viridis')
-im0 = axes[0].contourf(param1_grid, param2_grid, mean_grid, levels=40, cmap='viridis')
-axes[0].set_xlabel(labels[param1_name])
-axes[0].set_ylabel(labels[param2_name])
-cbar0 = fig.colorbar(im0, ax=axes[0])
-cbar0.set_label("Mean Convergence Time (ns)")
-
-# Standard deviation
-#im1 = axes[1].imshow(std_grid, origin='lower',
-#                     extent=[param1_unique.min(), param1_unique.max(),
-#                             param2_unique.min(), param2_unique.max()],
-#                     aspect='auto', cmap='magma')
-im1 = axes[1].contourf(param1_grid, param2_grid, std_grid, levels=40, cmap='magma')
-axes[1].set_xlabel(labels[param1_name])
-axes[1].set_ylabel(labels[param2_name])
-cbar1 = fig.colorbar(im1, ax=axes[1])
-cbar1.set_label("Standard Deviation (ns)")
-
-plt.tight_layout()
-plt.savefig("convergence_2D.png", dpi=300)
+if __name__ == "__main__":
+    main()

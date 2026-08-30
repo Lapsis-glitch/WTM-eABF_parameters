@@ -1,44 +1,109 @@
-# Convergence_evaluation
+# Convergence evaluation
 
-Small toolkit to analyze PMF convergence and build robust reference PMFs.
+The analysis code separates numerical calculations, input discovery, plotting,
+and output management. All analyses consume normalized `RunRecord` objects
+from `input_discovery.py` and write beneath one output root.
 
-Tools:
-- `analyze_ND.py` — Analyze PMF histories and sampling counts:
-  - Visualizes RMSD convergence, sequential PMFs, sampling evolution, and post-convergence vs final PMF.
-  - Supports RMSD to final PMF, sliding-window RMSD, or RMSD to an external reference PMF.
-  - Command-line options for thresholds, smoothing, annotation control, and saving figures.
+## Publication figures
 
-- `buildref.py` — Build a reference PMF from multiple simulations:
-  - Scans subdirectories for PMF files, interpolates to a common grid, computes median, average, and outlier-filtered averages.
-  - Writes PMF files in the repository's sequential format and saves comparison plots.
+Use the installed package in the `main` environment:
 
-- `pmf_io.py` — IO & utilities:
-  - Read/write single PMF format and history (multi-block) format.
-  - Interpolate PMFs to common grids.
-
-- `RMSD_curve_plotter.py` — Convenience script to compare RMSD curves across grouped runs:
-  - Groups folders by prefix before the first underscore, filters invalid runs, and plots group-wise RMSD overlays.
-
-Requirements:
-- Python 3.7+
-- numpy, scipy, matplotlib
-
-Quick examples:
-
-Analyze a PMF history with counts:
-```bash
-python analyze_ND.py pmf.hist.czar.pmf counts.hist.count --reference-pmf reference_filtered.pmf
+```python
+import pubready as pr
 ```
 
-Build a robust reference PMF from subdirectories:
+The shared plotting configuration defaults to ACS PubReady geometry:
+
+- multipanels: `publisher=acs`, `target=si`, `fraction=full`;
+- standalone panels: `publisher=acs`, `target=double`, `fraction=quarter`.
+
+Figures are saved as PDF and PNG by default (`--figure-formats pdf png`) at
+300 DPI for PNG. Every analysis that renders plots writes a multipanel and
+re-renders each constituent panel through the same panel function into
+`Figures/panels/`; standalone panels are never cropped from the multipanel.
+
+## Input modes
+
+Automatic discovery is recursive and configurable:
+
 ```bash
-python buildref.py --dir /path/to/base_dir --npoints 100 --temp 300
+conda run -n main python Convergence_evaluation/folder_parser.py data \
+  --pmf-pattern '**/*czar.pmf' --count-pattern '**/*count*'
 ```
 
-RMSD grouping plot:
+PMF/count pairs are matched by their compatible file stems in the same
+directory. Diagnostics report zero matches, unmatched files, and ambiguous
+pairs. Legacy names such as `output/abf_00...` remain discoverable when their
+files match the configured patterns, but folder names are not required.
+
+Explicit files are supported for single-run analyses:
+
 ```bash
-python RMSD_curve_plotter.py
-# edit the top-of-file configuration for parent_dir, filenames and thresholds
+python Convergence_evaluation/analyze_ND.py path/to/history.pmf path/to/counts
 ```
 
-For details on formats and options, consult the headers of each script (`--help` where supported).
+A CSV or TSV manifest is the most flexible mode. Paths are relative to the
+manifest file and arbitrary parameter names are supported:
+
+```text
+run_id,pmf_file,count_file,group,seed,parameter_name,parameter_value
+alpha,data/a.czar.pmf,data/a.count,set-A,1,spring_constant,0.5
+```
+
+For multiple dimensions, use `parameter_values` JSON or columns such as
+`parameter_temperature` and `parameter_lambda`.
+
+## Results hierarchy
+
+Use `--output-root PATH` to override the default `Results/`. Generated files
+never go beside input data by default:
+
+```text
+input data
+   │
+   ▼
+general discovery / manifest
+   │
+   ▼
+normalized run records
+   ├───────────────┬────────────────┐
+   ▼               ▼                ▼
+convergence     reference PMF     RMSD analysis
+   │               │                │
+   ▼               ▼                ▼
+Results/<analysis>/...
+   │
+   └── Figures/
+       ├── *_multipanel.pdf   ← ACS / SI / full
+       └── panels/*.pdf       ← ACS / double / quarter
+```
+
+Stable analysis directories are `pmf_convergence`, `reference_pmf`,
+`convergence_summary`, `convergence_surface`, `rmsd_curves`, and
+`rmsd_seed_curves`. Optional per-snapshot exports belong in
+`Figures/snapshots/` and are distinct from semantic standalone panels.
+
+## Commands
+
+```bash
+python Convergence_evaluation/analyze_ND.py PMF COUNT --output-root Results
+python Convergence_evaluation/buildref.py --dir runs --output-root Results
+python Convergence_evaluation/plot_results.py Results/convergence_summary/convergence_summary.csv
+python Convergence_evaluation/plot_results2D.py \
+  Results/convergence_summary/convergence_summary.csv \
+  --x-parameter temperature --y-parameter lambda
+python Convergence_evaluation/RMSD_curve_plotter.py runs --output-root Results
+python Convergence_evaluation/RMSD_curve_plotter_seeds.py runs --output-root Results
+```
+
+`plot_results.py` falls back to unknown parameter names as axis labels. The
+2D plotter requires explicit `--x-parameter` and `--y-parameter` selection,
+while discovery itself supports any number of metadata dimensions.
+
+## Tests
+
+Run the tests in the PubReady environment:
+
+```bash
+conda run -n main pytest -q
+```

@@ -1,13 +1,11 @@
 # WTM-eABF_parameters
 
-Utilities to evaluate PMF convergence and to build reference PMFs for WTM-eABF experiments.
+Utilities for PMF convergence, reference-PMF construction, convergence
+sweeps, and grouped RMSD analysis.
 
-Subpackages:
-- `Convergence_evaluation/` — scripts to analyze PMF convergence, build reference PMFs, and visualize RMSD curves.
+Run the tools in the Conda environment/repository named `main`. The installed
+[PubReady](https://github.com/Lapsis-glitch/PubReady) package is required for
+publication figures; the code does not vendor or reimplement it.
 
-Quick start:
-- Install requirements: `pip install numpy scipy matplotlib`
-- Use `analyze_ND.py` to inspect PMF histories and sampling counts.
-- Use `buildref.py` to compute median/average reference PMFs from multiple runs.
-
-See `Convergence_evaluation/README.md` for more details.
+See [`Convergence_evaluation/README.md`](Convergence_evaluation/README.md) for
+input modes, output conventions, and examples.

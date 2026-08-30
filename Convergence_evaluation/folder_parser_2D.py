@@ -1,96 +1,53 @@
+#!/usr/bin/env python3
+"""Backward-compatible entry point for the generalized convergence parser."""
+
+from __future__ import annotations
+
 import argparse
-import os
-import numpy as np
-from collections import defaultdict
-from analyze_ND import PMFAnalyzer
-import re
+import logging
+
+try:
+    from .convergence_summary import summarize_runs, write_summary_csv
+    from .input_discovery import records_from_inputs
+    from .outputs import analysis_output
+except ImportError:
+    from convergence_summary import summarize_runs, write_summary_csv
+    from input_discovery import records_from_inputs
+    from outputs import analysis_output
 
 
-def extract_base_name(folder):
-    """
-    Extract the parameter-value portion of a folder name.
-    Example: Parameter1_Value1_Parameter2_Value2_seed_42 -> Parameter1_Value1_Parameter2_Value2
-    """
-    # Remove the _seed_X suffix if present
-    folder_no_seed = folder.rsplit("_seed_", 1)[0]
-
-    # Optional: further clean folder name if you only want parameter-value pairs
-    # This regex keeps sequences like Param_Val_Param_Val
-    match = re.match(r"^([A-Za-z0-9.]+(?:_[A-Za-z0-9.]+)+)", folder_no_seed)
-    if match:
-        return match.group(1)
-    else:
-        return folder_no_seed  # fallback to whatever remains
+def parse(path=None, reference_pmf=None, *, output_root="Results", manifest=None,
+          pmf_file=None, count_file=None, pmf_pattern="**/*czar.pmf", count_pattern=None,
+          metadata_regex=None):
+    result = records_from_inputs(root=path if manifest is None and pmf_file is None else None,
+                                 manifest=manifest, pmf_file=pmf_file, count_file=count_file,
+                                 pmf_pattern=pmf_pattern, count_pattern=count_pattern,
+                                 metadata_regex=metadata_regex)
+    summaries = summarize_runs(result.runs, reference_pmf=reference_pmf)
+    output = analysis_output(output_root, "convergence_surface")
+    write_summary_csv(summaries, output.directory / "convergence_summary.csv")
+    return summaries
 
 
-def parse(path, reference_pmf):
-    print(path)
-
-    grouped_results = defaultdict(list)
-
-    # First pass: compute convergence per folder
-    for folder in os.listdir(path):
-        if folder.startswith(('reference', 'common')):
-            continue
-
-        folder_path = os.path.join(path, folder)
-        if not os.path.isdir(folder_path):
-            continue
-
-        base_name = extract_base_name(folder)
-
-        try:
-            candidate1 = os.path.join(folder_path, 'output', 'abf_00.abf1.hist.czar.pmf')
-            if os.path.isfile(candidate1):
-                filename = os.path.join(folder_path, 'output', 'abf_00.abf1.hist.')
-            else:
-                filename = os.path.join(folder_path, 'output', 'window1.abf1.hist.')
-
-            analyzer = PMFAnalyzer(
-                filename + 'czar.pmf',
-                filename + 'count',
-                slope_thresh=0.01,
-                n_recent=5,
-                use_sliding_window=False,
-                count_std_thresh=None,
-                reference_pmf_file=reference_pmf,
-                rmsd_thresh=0.592186869182,
-                use_ref_and_slope=True
-            )
-
-            grouped_results[base_name].append(analyzer.convergence_idx)
-
-        except Exception:
-            # skip errors for aggregation (or you could log them)
-            continue
-
-    # Second pass: compute stats and write output
-    results_file = os.path.join(path, 'results.dat')
-    with open(results_file, 'w') as f:
-        for base_name, values in grouped_results.items():
-            clean_values = [v for v in values if v is not None]
-
-            if len(clean_values) == 0:
-                print(f"{base_name} skipped (no valid values)")
-                continue
-
-            mean_val = np.mean(clean_values)
-            std_val = np.std(clean_values)
-            max_val = np.max(clean_values)
-            min_val = np.min(clean_values)
-
-            print(f"{base_name} {mean_val:.3f} {std_val:.3f} {min_val:.3f} {max_val:.3f} (n={len(clean_values)})")
-            f.write(f"{base_name} {mean_val:.3f} {std_val:.3f} {min_val:.3f} {max_val:.3f} {len(clean_values)}\n")
+def main():
+    parser = argparse.ArgumentParser(description="Discover runs for a convergence surface")
+    parser.add_argument("path", nargs="?")
+    parser.add_argument("--manifest")
+    parser.add_argument("--pmf-file")
+    parser.add_argument("--count-file")
+    parser.add_argument("--reference-pmf")
+    parser.add_argument("--pmf-pattern", default="**/*czar.pmf")
+    parser.add_argument("--count-pattern")
+    parser.add_argument("--metadata-regex")
+    parser.add_argument("--output-root", default="Results")
+    args = parser.parse_args()
+    if not args.path and not args.manifest and not args.pmf_file:
+        parser.error("provide path, --manifest, or --pmf-file")
+    parse(args.path, args.reference_pmf, output_root=args.output_root, manifest=args.manifest,
+          pmf_file=args.pmf_file, count_file=args.count_file, pmf_pattern=args.pmf_pattern,
+          count_pattern=args.count_pattern, metadata_regex=args.metadata_regex)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Path to folder containing ABF PMF/count histories"
-    )
-    parser.add_argument('path', help='Path to folders')
-    parser.add_argument('--reference-pmf',
-                        type=str, default=None,
-                        help='Optional external PMF file to use as RMSD reference')
-
-    args = parser.parse_args()
-    parse(args.path, args.reference_pmf)
+    logging.basicConfig(level=logging.INFO)
+    main()

@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+*.tmp
+*.temp
+*.swp
+*.swo
+.DS_Store
+.idea/workspace.xml
