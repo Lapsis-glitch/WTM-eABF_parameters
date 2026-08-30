@@ -101,6 +101,25 @@ python Convergence_evaluation/RMSD_curve_plotter.py runs --output-root Results
 python Convergence_evaluation/RMSD_curve_plotter_seeds.py runs --output-root Results
 ```
 
+To additionally write a clean median-only reference PMF figure, use
+`--simple-reference-plot`. It is saved as
+`Results/reference_pmf/Figures/reference_median.pdf` and `.png` by default.
+The default x-axis label is `Coordinate`; supply a publication-specific label
+when needed:
+
+```bash
+python Convergence_evaluation/buildref.py --dir runs --output-root Results \
+  --simple-reference-plot --xlabel "Collective variable"
+python Convergence_evaluation/buildref.py --dir runs --output-root Results \
+  --simple-reference-plot --xlabel 'Distance (Å)'
+python Convergence_evaluation/buildref.py --dir runs --output-root Results \
+  --simple-reference-plot --xlabel '$z$ (Å)'
+```
+
+The simple figure contains only the existing median reference PMF, with no
+legend or title. The regular comparison, outlier, PMF files, and diagnostic
+panels are still produced in the same run.
+
 `plot_results.py` falls back to unknown parameter names as axis labels. The
 2D plotter requires explicit `--x-parameter` and `--y-parameter` selection,
 while discovery itself supports any number of metadata dimensions.

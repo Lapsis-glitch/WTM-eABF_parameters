@@ -20,6 +20,8 @@ except ImportError:
 
 
 kB = 0.008314462618
+REFERENCE_XLABEL = "Coordinate"
+REFERENCE_YLABEL = "PMF (kcal/mol)"
 
 
 def pmf_to_prob(F, T):
@@ -70,9 +72,23 @@ def compute_reference_pmf_with_outliers(coords_tuple, F_list, T, mad_cut=3.5,
             "keep_mask": keep_mask, "deviations": deviations, "cutoff": cutoff}
 
 
-def plot_pmf_comparison_panel(ax, data, x):
+def plot_median_reference(ax, x, median, *, xlabel=REFERENCE_XLABEL,
+                          ylabel=REFERENCE_YLABEL, show_legend=False,
+                          show_title=False):
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-    ax.plot(x, data["F_median"], label="Median", linewidth=2, color=colors[0])
+    ax.plot(x, median, label="Median", linewidth=2, color=colors[0])
+    ax.set(xlabel=xlabel, ylabel=ylabel)
+    ax.set_ylim(-0.1, None)
+    if show_legend:
+        ax.legend(loc="best")
+    if not show_title:
+        ax.set_title("")
+    return ax
+
+
+def plot_pmf_comparison_panel(ax, data, x):
+    plot_median_reference(ax, x, data["F_median"])
+    colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     ax.plot(x, data["F_all"], "--", label="Average (all)", linewidth=2, color=colors[2])
     ax.plot(x, data["F_filtered"], "-.", label="Average (filtered)", linewidth=2, color=colors[1])
     ax.fill_between(x, data["F_all"] - data["F_all_err"], data["F_all"] + data["F_all_err"],
@@ -80,10 +96,14 @@ def plot_pmf_comparison_panel(ax, data, x):
     ax.fill_between(x, data["F_filtered"] - data["F_filtered_err"],
                     data["F_filtered"] + data["F_filtered_err"], alpha=0.2, color=colors[1],
                     label="Error (filtered)")
-    ax.set(xlabel="Coordinate", ylabel="PMF (kcal/mol)")
-    ax.set_ylim(-0.1, None)
     ax.legend(loc="best")
     return ax
+
+
+def plot_simple_reference_panel(ax, data, x, *, xlabel=None):
+    """Render only the already-computed median reference PMF."""
+    return plot_median_reference(ax, x, data["F_median"],
+                                 xlabel=REFERENCE_XLABEL if xlabel is None else xlabel)
 
 
 def plot_outlier_panel(ax, data):
@@ -95,7 +115,8 @@ def plot_outlier_panel(ax, data):
     return ax
 
 
-def render_reference_figures(data, coords_tuple, *, output_root="Results", config=None):
+def render_reference_figures(data, coords_tuple, *, output_root="Results", config=None,
+                             simple_reference_plot=False, xlabel=None):
     config = config or PlotConfig(output_root=str(output_root))
     output = analysis_output(output_root, "reference_pmf")
     if len(coords_tuple) != 1:
@@ -114,4 +135,9 @@ def render_reference_figures(data, coords_tuple, *, output_root="Results", confi
             renderer(panel_ax)
             save_figure(panel_fig, output.panels / name, config)
             close_figure(panel_fig)
+        if simple_reference_plot:
+            simple_fig, simple_ax = make_figure(config, kind="panel")
+            plot_simple_reference_panel(simple_ax, data, coords_tuple[0], xlabel=xlabel)
+            save_figure(simple_fig, output.figures / "reference_median", config)
+            close_figure(simple_fig)
     return output.directory

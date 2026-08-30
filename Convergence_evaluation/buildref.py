@@ -45,7 +45,8 @@ def read_sequential_pmf_file(filename):
 
 def run(base_dir=None, temperature=300, name="abf_00.abf1", n_points=100, *,
         output_root="Results", manifest=None, pmf_file=None, count_file=None,
-        pmf_pattern=None, count_pattern=None, metadata_regex=None, config=None):
+        pmf_pattern=None, count_pattern=None, metadata_regex=None, config=None,
+        simple_reference_plot=False, xlabel=None):
     pattern = pmf_pattern or f"**/{name}.czar.pmf"
     discovered = records_from_inputs(root=base_dir if manifest is None and pmf_file is None else None,
                                      manifest=manifest, pmf_file=pmf_file, count_file=count_file,
@@ -71,11 +72,12 @@ def run(base_dir=None, temperature=300, name="abf_00.abf1", n_points=100, *,
     data = compute_reference_pmf_with_outliers(coords_tuple, values, temperature,
                                                write_prefix=output.directory / "reference")
     render_reference_figures(data, coords_tuple, output_root=output_root,
-                             config=config or PlotConfig(output_root=str(output_root)))
+                             config=config or PlotConfig(output_root=str(output_root)),
+                             simple_reference_plot=simple_reference_plot, xlabel=xlabel)
     return data
 
 
-def main():
+def build_parser():
     parser = argparse.ArgumentParser(description="Compute robust reference PMFs")
     parser.add_argument("--dir", help="Input root for recursive discovery")
     parser.add_argument("--manifest")
@@ -87,7 +89,16 @@ def main():
     parser.add_argument("--count-pattern")
     parser.add_argument("--metadata-regex")
     parser.add_argument("--npoints", type=int, default=100)
+    parser.add_argument("--simple-reference-plot", action="store_true",
+                        help="also write a median-only publication reference figure")
+    parser.add_argument("--xlabel", default=None, metavar="LABEL",
+                        help="x-axis label for the simple reference figure")
     add_plotting_arguments(parser)
+    return parser
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
     if not args.dir and not args.manifest and not args.pmf_file:
         parser.error("provide --dir, --manifest, or --pmf-file")
@@ -95,7 +106,8 @@ def main():
     run(args.dir, temperature=args.temp, name=args.name, n_points=args.npoints,
         output_root=config.output_root, manifest=args.manifest, pmf_file=args.pmf_file,
         count_file=args.count_file, pmf_pattern=args.pmf_pattern,
-        count_pattern=args.count_pattern, metadata_regex=args.metadata_regex, config=config)
+        count_pattern=args.count_pattern, metadata_regex=args.metadata_regex, config=config,
+        simple_reference_plot=args.simple_reference_plot, xlabel=args.xlabel)
 
 
 if __name__ == "__main__":

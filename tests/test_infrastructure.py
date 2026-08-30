@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from Convergence_evaluation.input_discovery import discover_runs, read_manifest
+from Convergence_evaluation.buildref import build_parser
 from Convergence_evaluation.outputs import analysis_output
 from Convergence_evaluation.plotting import (PlotConfig, close_figure, make_figure,
                                              publication_style, save_figure)
@@ -16,6 +17,9 @@ from Convergence_evaluation.analyze_ND import plot_rmsd_panel
 from Convergence_evaluation.plot_results import plot_summary, plot_summary_panel
 from Convergence_evaluation.plot_results2D import _surface
 from Convergence_evaluation.rmsd_analysis import plot_group_panel, plot_seed_panel
+from Convergence_evaluation.reference_builder import (compute_reference_pmf_with_outliers,
+                                                      plot_pmf_comparison_panel,
+                                                      plot_simple_reference_panel)
 from Convergence_evaluation.plotting import (finalize_multipanel_layout, multipanel_grid,
                                              flatten_axes, set_shared_labels)
 
@@ -305,3 +309,67 @@ def test_two_dimensional_multipanel_preserves_pubready_colorbars(tmp_path):
                            for axis in colorbars]
         assert not colorbar_labels[0].overlaps(colorbar_labels[1])
         close_figure(fig)
+
+
+def test_simple_reference_panel_is_median_only_with_custom_xlabel(tmp_path):
+    pytest.importorskip("pubready")
+    coords = (np.linspace(-1, 1, 8),)
+    pmfs = [np.linspace(0, 2, 8), np.linspace(0.2, 2.2, 8), np.linspace(0.1, 1.9, 8)]
+    data = compute_reference_pmf_with_outliers(coords, pmfs, 300,
+                                                write_prefix=tmp_path / "reference")
+    config = PlotConfig(formats=("pdf",))
+    with publication_style(config):
+        fig, ax = make_figure(config, kind="panel")
+        plot_simple_reference_panel(ax, data, coords[0], xlabel="Reaction coordinate")
+        save_figure(fig, tmp_path / "reference_median", config)
+        fig.canvas.draw()
+        assert len(ax.lines) == 1
+        np.testing.assert_array_equal(ax.lines[0].get_ydata(), data["F_median"])
+        assert ax.get_legend() is None
+        assert ax.get_xlabel() == "Reaction coordinate"
+        assert ax.get_ylabel() == "PMF (kcal/mol)"
+        assert ax.get_title() == ""
+        report = __import__("pubready").layout_report(fig)
+        assert report.publisher == "acs"
+        assert report.target == "double"
+        assert report.fraction == "quarter"
+        assert (tmp_path / "reference_median.pdf").is_file()
+        close_figure(fig)
+
+
+def test_simple_reference_panel_uses_default_xlabel_and_shared_median(tmp_path):
+    coords = (np.linspace(0, 1, 5),)
+    median = np.array([0.0, 0.4, 0.8, 0.3, 0.1])
+    data = {"F_median": median}
+    fig, ax = plt.subplots()
+    plot_simple_reference_panel(ax, data, coords[0])
+    np.testing.assert_array_equal(ax.lines[0].get_ydata(), median)
+    assert ax.get_xlabel() == "Coordinate"
+    assert ax.get_title() == ""
+    assert ax.get_legend() is None
+    plt.close(fig)
+
+
+def test_reference_comparison_panel_keeps_rich_diagnostic_curves():
+    x = np.linspace(0, 1, 5)
+    data = {"F_median": np.array([0, 1, 2, 1, 0.5]),
+            "F_all": np.array([0, 0.8, 1.8, 1.1, 0.4]),
+            "F_filtered": np.array([0, 0.9, 1.9, 1.0, 0.45]),
+            "F_all_err": np.full(5, 0.1),
+            "F_filtered_err": np.full(5, 0.05)}
+    fig, ax = plt.subplots()
+    plot_pmf_comparison_panel(ax, data, x)
+    assert [line.get_label() for line in ax.lines] == [
+        "Median", "Average (all)", "Average (filtered)"
+    ]
+    assert len(ax.collections) == 2
+    assert ax.get_legend() is not None
+    plt.close(fig)
+
+
+def test_buildref_parser_accepts_simple_reference_options():
+    args = build_parser().parse_args(["--pmf-file", "input.pmf",
+                                      "--simple-reference-plot",
+                                      "--xlabel", "Reaction coordinate"])
+    assert args.simple_reference_plot is True
+    assert args.xlabel == "Reaction coordinate"
