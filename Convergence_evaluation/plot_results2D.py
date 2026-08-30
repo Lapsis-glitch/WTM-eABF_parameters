@@ -12,13 +12,15 @@ import numpy as np
 try:
     from .convergence_summary import read_summary
     from .outputs import analysis_output
-    from .plotting import PlotConfig, add_plotting_arguments, close_figure, flatten_axes
-    from .plotting import make_figure, publication_style, save_figure
+    from .plotting import (PlotConfig, add_plotting_arguments, close_figure,
+                           finalize_multipanel_layout, flatten_axes, make_figure,
+                           publication_style, save_figure)
 except ImportError:
     from convergence_summary import read_summary
     from outputs import analysis_output
-    from plotting import PlotConfig, add_plotting_arguments, close_figure, flatten_axes
-    from plotting import make_figure, publication_style, save_figure
+    from plotting import (PlotConfig, add_plotting_arguments, close_figure,
+                          finalize_multipanel_layout, flatten_axes, make_figure,
+                          publication_style, save_figure)
 
 
 def _surface(ax, rows, x_name, y_name, field, divisor, cmap, label):
@@ -43,7 +45,9 @@ def _surface(ax, rows, x_name, y_name, field, divisor, cmap, label):
     ax.set(xlabel=x_name, ylabel=y_name, title=label)
     ax.figure.canvas.draw_idle()
     import pubready as pr
-    pr.add_colorbar(ax.figure, mappable, ax=ax, location="right", label=label)
+    # Leave enough physical rail between neighboring vertical colorbars for
+    # their rotated labels to remain distinct after PubReady resolves them.
+    pr.add_colorbar(ax.figure, mappable, ax=ax, location="right", label=label, gap=0.25)
     return ax
 
 
@@ -56,7 +60,8 @@ def plot_surface(rows, x_name, y_name, *, output_root="Results", config=None, di
         fig, axes = make_figure(config, kind="multipanel", ncols=2)
         for axis, (_, field, cmap, label) in zip(flatten_axes(axes), renderers):
             _surface(axis, rows, x_name, y_name, field, divisor, cmap, label)
-        save_figure(fig, output.figures / "convergence_surface_multipanel", config)
+        finalize_multipanel_layout(fig)
+        save_figure(fig, output.figures / "convergence_surface_multipanel", config, fit=False)
         close_figure(fig)
         for name, field, cmap, label in renderers:
             panel_fig, panel_ax = make_figure(config, kind="panel")

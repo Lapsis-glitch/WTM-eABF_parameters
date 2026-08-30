@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
-import math
 from collections import defaultdict
 from pathlib import Path
 
@@ -16,14 +15,16 @@ try:
     from .analyze_ND import PMFAnalyzer
     from .input_discovery import RunRecord, records_from_inputs
     from .outputs import analysis_output, safe_name
-    from .plotting import PlotConfig, add_plotting_arguments, close_figure, flatten_axes
-    from .plotting import make_figure, publication_style, save_figure
+    from .plotting import (PlotConfig, add_plotting_arguments, close_figure,
+                           finalize_multipanel_layout, flatten_axes, multipanel_grid,
+                           make_figure, publication_style, save_figure, set_shared_labels)
 except ImportError:
     from analyze_ND import PMFAnalyzer
     from input_discovery import RunRecord, records_from_inputs
     from outputs import analysis_output, safe_name
-    from plotting import PlotConfig, add_plotting_arguments, close_figure, flatten_axes
-    from plotting import make_figure, publication_style, save_figure
+    from plotting import (PlotConfig, add_plotting_arguments, close_figure,
+                          finalize_multipanel_layout, flatten_axes, multipanel_grid,
+                          make_figure, publication_style, save_figure, set_shared_labels)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -102,17 +103,26 @@ def _write_run_table(items, output):
                              analyzer.convergence_idx if analyzer.convergence_idx is not None else ""])
 
 
-def plot_group_panel(ax, entries, divisor=1.0):
+def _rmsd_legend_kwargs():
+    return {"loc": "best", "ncols": 2,
+            "handlelength": plt.rcParams["legend.handlelength"] / 3.0}
+
+
+def plot_group_panel(ax, entries, divisor=1.0, show_xlabel=True, show_ylabel=True):
     for record, analyzer in sorted(entries, key=lambda item: _sort_value(_parameter_label(item[0]))):
         ax.plot(analyzer.t / divisor, analyzer.rmsd_raw, label=str(_parameter_label(record)), linewidth=1.5)
     group = entries[0][0].group or "RMSD"
-    ax.set(title=str(group), xlabel="Time (ns)" if divisor != 1 else "Snapshot Index", ylabel="RMSD")
-    ax.legend(loc="best")
+    ax.set_title(str(group))
+    if show_xlabel:
+        ax.set_xlabel("Time (ns)" if divisor != 1 else "Snapshot Index")
+    if show_ylabel:
+        ax.set_ylabel("RMSD")
+    ax.legend(**_rmsd_legend_kwargs())
     ax.grid(True)
     return ax
 
 
-def plot_seed_panel(ax, entries, divisor=1.0):
+def plot_seed_panel(ax, entries, divisor=1.0, show_xlabel=True, show_ylabel=True):
     by_value = defaultdict(list)
     for record, analyzer in entries:
         by_value[_parameter_label(record)].append((record, analyzer))
@@ -126,8 +136,12 @@ def plot_seed_panel(ax, entries, divisor=1.0):
                     linestyle=LINESTYLES[seed_index % len(LINESTYLES)], linewidth=1.5)
         handles.append(Line2D([0], [0], color=color, lw=2, label=str(value)))
     group = entries[0][0].group or "RMSD by seed"
-    ax.set(title=str(group), xlabel="Time (ns)" if divisor != 1 else "Snapshot Index", ylabel="RMSD")
-    ax.legend(handles=handles, loc="best")
+    ax.set_title(str(group))
+    if show_xlabel:
+        ax.set_xlabel("Time (ns)" if divisor != 1 else "Snapshot Index")
+    if show_ylabel:
+        ax.set_ylabel("RMSD")
+    ax.legend(handles=handles, **_rmsd_legend_kwargs())
     ax.grid(True)
     return ax
 
@@ -142,15 +156,17 @@ def run(items, *, output_root="Results", analysis_name="rmsd_curves", config=Non
     groups = sorted(grouped.items(), key=lambda item: str(item[0]))
     renderer = plot_seed_panel if seed_mode else plot_group_panel
     with publication_style(config):
-        cols = min(3, max(1, math.ceil(math.sqrt(len(groups)))))
-        rows = math.ceil(len(groups) / cols)
+        rows, cols = multipanel_grid(len(groups), config)
         fig, axes = make_figure(config, kind="multipanel", nrows=rows, ncols=cols, sharex=True)
         axes_list = flatten_axes(axes)
         for axis, (_, entries) in zip(axes_list, groups):
-            renderer(axis, entries, divisor=divisor)
+            renderer(axis, entries, divisor=divisor, show_xlabel=False, show_ylabel=False)
+            axis.label_outer()
         for axis in axes_list[len(groups):]:
             axis.set_visible(False)
-        save_figure(fig, output.figures / f"{safe_name(analysis_name)}_multipanel", config)
+        set_shared_labels(fig, xlabel="Time (ns)" if divisor != 1 else "Snapshot Index", ylabel="RMSD")
+        finalize_multipanel_layout(fig)
+        save_figure(fig, output.figures / f"{safe_name(analysis_name)}_multipanel", config, fit=False)
         close_figure(fig)
         for group, entries in groups:
             panel_fig, panel_ax = make_figure(config, kind="panel")

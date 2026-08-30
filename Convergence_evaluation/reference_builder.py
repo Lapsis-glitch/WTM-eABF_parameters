@@ -10,11 +10,13 @@ import numpy as np
 try:
     from .pmf_io import interpolate_pmf, write_sequential_pmf
     from .outputs import analysis_output
-    from .plotting import PlotConfig, close_figure, make_figure, publication_style, save_figure
+    from .plotting import (PlotConfig, close_figure, finalize_multipanel_layout,
+                           make_figure, publication_style, save_figure)
 except ImportError:
     from pmf_io import interpolate_pmf, write_sequential_pmf
     from outputs import analysis_output
-    from plotting import PlotConfig, close_figure, make_figure, publication_style, save_figure
+    from plotting import (PlotConfig, close_figure, finalize_multipanel_layout,
+                          make_figure, publication_style, save_figure)
 
 
 kB = 0.008314462618
@@ -87,8 +89,8 @@ def plot_pmf_comparison_panel(ax, data, x):
 def plot_outlier_panel(ax, data):
     ax.plot(data["deviations"], "o", label="Deviation from median")
     ax.axhline(data["cutoff"], color="C3", linestyle="--", label="Outlier cutoff")
-    ax.set(xlabel="Simulation index", ylabel="Deviation (RMSD in P-space)",
-           title="Outlier Diagnostics (MAD-based)")
+    ax.set(xlabel="Simulation index", ylabel="Deviation\n(RMSD in P-space)",
+           title="Outlier Diagnostics\n(MAD-based)")
     ax.legend(loc="best")
     return ax
 
@@ -104,7 +106,8 @@ def render_reference_figures(data, coords_tuple, *, output_root="Results", confi
         fig, axes = make_figure(config, kind="multipanel", ncols=2)
         for axis, (_, renderer) in zip(np.asarray(axes, dtype=object).flat, renderers):
             renderer(axis)
-        save_figure(fig, output.figures / "reference_pmf_multipanel", config)
+        finalize_multipanel_layout(fig)
+        save_figure(fig, output.figures / "reference_pmf_multipanel", config, fit=False)
         close_figure(fig)
         for name, renderer in renderers:
             panel_fig, panel_ax = make_figure(config, kind="panel")

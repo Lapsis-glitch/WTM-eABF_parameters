@@ -5,25 +5,25 @@ from __future__ import annotations
 
 import argparse
 import csv
-import math
 from collections import defaultdict
 from decimal import Decimal
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter
 
 try:
     from .convergence_summary import read_summary
     from .outputs import analysis_output
-    from .plotting import PlotConfig, add_plotting_arguments, close_figure, flatten_axes
-    from .plotting import make_figure, publication_style, save_figure
+    from .plotting import (PlotConfig, add_plotting_arguments, close_figure,
+                           finalize_multipanel_layout, flatten_axes, multipanel_grid,
+                           make_figure, publication_style, save_figure, set_shared_labels)
 except ImportError:
     from convergence_summary import read_summary
     from outputs import analysis_output
-    from plotting import PlotConfig, add_plotting_arguments, close_figure, flatten_axes
-    from plotting import make_figure, publication_style, save_figure
+    from plotting import (PlotConfig, add_plotting_arguments, close_figure,
+                          finalize_multipanel_layout, flatten_axes, multipanel_grid,
+                          make_figure, publication_style, save_figure, set_shared_labels)
 
 
 LABELS = {"MTDheight": "hillWeight", "MTDnewhill": "newHillFrequency",
@@ -73,7 +73,7 @@ def _plain_tick_label(value, _position):
     return label.rstrip("0").rstrip(".") if "." in label else label
 
 
-def plot_summary_panel(ax, rows, parameter_name, divisor=20.0):
+def plot_summary_panel(ax, rows, parameter_name, divisor=20.0, show_ylabel=True):
     grouped = defaultdict(list)
     for row in rows:
         params = row.get("parameter_values") or {}
@@ -93,7 +93,11 @@ def plot_summary_panel(ax, rows, parameter_name, divisor=20.0):
         ax.plot(x, mean, marker="o", color=color, label=label)
         ax.fill_between(x, [m - s for m, s in zip(mean, std)], [m + s for m, s in zip(mean, std)], color=color, alpha=0.2)
         ax.fill_between(x, minimum, maximum, color=color, alpha=0.1)
-    ax.set(xlabel=LABELS.get(parameter_name, parameter_name), ylabel="Convergence (ns)")
+    ax.set_xlabel(LABELS.get(parameter_name, parameter_name))
+    if show_ylabel:
+        ax.set_ylabel("Convergence (ns)")
+    else:
+        ax.set_ylabel("")
     ax.xaxis.set_major_formatter(FuncFormatter(_plain_tick_label))
     ax.grid(True, color="lightgray")
     if len(grouped) > 1:
@@ -108,15 +112,16 @@ def plot_summary(rows, *, output_root="Results", config=None, divisor=20.0):
         raise RuntimeError("summary contains no parameter metadata; provide a manifest with parameter columns")
     output = analysis_output(output_root, "convergence_summary")
     with publication_style(config):
-        cols = min(3, max(1, math.ceil(math.sqrt(len(names)))))
-        rows_count = math.ceil(len(names) / cols)
+        rows_count, cols = multipanel_grid(len(names), config)
         fig, axes = make_figure(config, kind="multipanel", nrows=rows_count, ncols=cols, sharey=True)
         axes_list = flatten_axes(axes)
         for axis, name in zip(axes_list, names):
-            plot_summary_panel(axis, rows, name, divisor=divisor)
+            plot_summary_panel(axis, rows, name, divisor=divisor, show_ylabel=False)
         for axis in axes_list[len(names):]:
             axis.set_visible(False)
-        save_figure(fig, output.figures / "convergence_summary_multipanel", config)
+        set_shared_labels(fig, ylabel="Convergence (ns)")
+        finalize_multipanel_layout(fig)
+        save_figure(fig, output.figures / "convergence_summary_multipanel", config, fit=False)
         close_figure(fig)
         for name in names:
             panel_fig, panel_ax = make_figure(config, kind="panel")

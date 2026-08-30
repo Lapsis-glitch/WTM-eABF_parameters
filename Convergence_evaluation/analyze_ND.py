@@ -14,14 +14,16 @@ from scipy.signal import savgol_filter
 
 try:
     from .outputs import analysis_output
-    from .plotting import PlotConfig, add_plotting_arguments, close_figure, flatten_axes
-    from .plotting import make_figure, publication_style, save_figure
+    from .plotting import (PlotConfig, add_plotting_arguments, close_figure,
+                           finalize_multipanel_layout, flatten_axes, make_figure,
+                           publication_style, save_figure)
     from .pmf_io import (interpolate_pmf, read_sequential_counts, read_sequential_pmf,
                          read_sequential_pmf_blocks)
 except ImportError:  # Support direct script execution.
     from outputs import analysis_output
-    from plotting import PlotConfig, add_plotting_arguments, close_figure, flatten_axes
-    from plotting import make_figure, publication_style, save_figure
+    from plotting import (PlotConfig, add_plotting_arguments, close_figure,
+                          finalize_multipanel_layout, flatten_axes, make_figure,
+                          publication_style, save_figure)
     from pmf_io import interpolate_pmf, read_sequential_counts, read_sequential_pmf, read_sequential_pmf_blocks
 
 
@@ -213,7 +215,8 @@ class PMFAnalyzer:
             for axis in axes_list[len(panel_specs):]:
                 axis.set_visible(False)
             base = Path(save_path).with_suffix("") if save_path else figures_dir / "pmf_convergence_multipanel"
-            save_figure(fig, base, config)
+            finalize_multipanel_layout(fig)
+            save_figure(fig, base, config, fit=False)
             close_figure(fig)
             for name, renderer, options in panel_specs:
                 panel_fig, panel_ax = make_figure(config, kind="panel")

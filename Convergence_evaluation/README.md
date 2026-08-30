@@ -21,6 +21,11 @@ Figures are saved as PDF and PNG by default (`--figure-formats pdf png`) at
 300 DPI for PNG. Every analysis that renders plots writes a multipanel and
 re-renders each constituent panel through the same panel function into
 `Figures/panels/`; standalone panels are never cropped from the multipanel.
+Multipanels use shared figure-level labels when panels represent the same
+quantity, PubReady-aware renderer spacing, and at most two columns under the
+default ACS `si/full` geometry. Standalone panels retain their own labels and
+use the unchanged ACS `double/quarter` geometry. RMSD legends use two columns
+and a line sample one third of the active Matplotlib/PubReady default length.
 
 ## Input modes
 
