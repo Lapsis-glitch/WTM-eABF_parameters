@@ -5,9 +5,10 @@ import pytest
 
 from Convergence_evaluation.input_discovery import discover_runs, read_manifest
 from Convergence_evaluation.outputs import analysis_output
-from Convergence_evaluation.plotting import PlotConfig, close_figure, make_figure, publication_style
+from Convergence_evaluation.plotting import (PlotConfig, close_figure, make_figure,
+                                             publication_style, save_figure)
 from Convergence_evaluation.analyze_ND import plot_rmsd_panel
-from Convergence_evaluation.plot_results import plot_summary
+from Convergence_evaluation.plot_results import plot_summary, plot_summary_panel
 
 
 def test_recursive_discovery_pairs_arbitrary_paths(tmp_path):
@@ -94,3 +95,23 @@ def test_summary_writes_multipanel_and_standalone_outputs(tmp_path):
     assert (figures / "convergence_summary_multipanel.pdf").is_file()
     assert (figures / "convergence_summary_multipanel.png").is_file()
     assert (figures / "panels" / "my_test_parameter_convergence.pdf").is_file()
+
+
+def test_summary_panel_has_no_title_and_plain_x_ticks(tmp_path):
+    rows = [{"group": "set-A", "parameter_values": {"parameter": 1000},
+             "mean": 10, "std": 1, "min": 8, "max": 12},
+            {"group": "set-A", "parameter_values": {"parameter": 10000},
+             "mean": 12, "std": 1, "min": 10, "max": 14}]
+    config = PlotConfig(formats=("pdf",))
+    with publication_style(config):
+        fig, ax = make_figure(config, kind="panel")
+        plot_summary_panel(ax, rows, "parameter")
+        save_path = tmp_path / "plain_ticks"
+        save_figure(fig, save_path, config)
+        fig.canvas.draw()
+        labels = [label.get_text() for label in ax.get_xticklabels()]
+        assert ax.get_title() == ""
+        assert ax.xaxis.get_offset_text().get_text() == ""
+        assert all("e" not in label.lower() and "10^" not in label for label in labels)
+        assert "10000" in labels
+        close_figure(fig)

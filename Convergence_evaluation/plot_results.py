@@ -7,10 +7,12 @@ import argparse
 import csv
 import math
 from collections import defaultdict
+from decimal import Decimal
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.ticker import FuncFormatter
 
 try:
     from .convergence_summary import read_summary
@@ -64,6 +66,13 @@ def _value_sort(value):
         return 1, str(value)
 
 
+def _plain_tick_label(value, _position):
+    if value == 0:
+        return "0"
+    label = format(Decimal(str(value)), "f")
+    return label.rstrip("0").rstrip(".") if "." in label else label
+
+
 def plot_summary_panel(ax, rows, parameter_name, divisor=20.0):
     grouped = defaultdict(list)
     for row in rows:
@@ -84,8 +93,8 @@ def plot_summary_panel(ax, rows, parameter_name, divisor=20.0):
         ax.plot(x, mean, marker="o", color=color, label=label)
         ax.fill_between(x, [m - s for m, s in zip(mean, std)], [m + s for m, s in zip(mean, std)], color=color, alpha=0.2)
         ax.fill_between(x, minimum, maximum, color=color, alpha=0.1)
-    ax.set(xlabel=LABELS.get(parameter_name, parameter_name), ylabel="Convergence (ns)",
-           title=LABELS.get(parameter_name, parameter_name))
+    ax.set(xlabel=LABELS.get(parameter_name, parameter_name), ylabel="Convergence (ns)")
+    ax.xaxis.set_major_formatter(FuncFormatter(_plain_tick_label))
     ax.grid(True, color="lightgray")
     if len(grouped) > 1:
         ax.legend(loc="best")
