@@ -1,4 +1,5 @@
 import csv
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,8 +19,14 @@ from Convergence_evaluation.plot_results import plot_summary, plot_summary_panel
 from Convergence_evaluation.plot_results2D import _surface
 from Convergence_evaluation.rmsd_analysis import plot_group_panel, plot_seed_panel
 from Convergence_evaluation.reference_builder import (compute_reference_pmf_with_outliers,
+                                                      load_reference_plot_data,
                                                       plot_pmf_comparison_panel,
-                                                      plot_simple_reference_panel)
+                                                      plot_simple_reference_panel,
+                                                      save_reference_plot_data,
+                                                      render_reference_figures)
+from Convergence_evaluation.rmsd_analysis import (load_rmsd_series, render_saved_rmsd_figures,
+                                                 run as run_rmsd)
+import Convergence_evaluation.rmsd_analysis as rmsd_analysis_module
 from Convergence_evaluation.plotting import (finalize_multipanel_layout, multipanel_grid,
                                              flatten_axes, set_shared_labels)
 
@@ -373,3 +380,120 @@ def test_buildref_parser_accepts_simple_reference_options():
                                       "--xlabel", "Reaction coordinate"])
     assert args.simple_reference_plot is True
     assert args.xlabel == "Reaction coordinate"
+
+
+def test_reference_plot_data_round_trip_supports_multidimensional_arrays(tmp_path):
+    coords = (np.linspace(-1, 1, 3), np.linspace(0, 2, 4))
+    shape = (3, 4)
+    data = {"F_median": np.arange(12).reshape(shape),
+            "F_all": np.arange(12).reshape(shape) + 1,
+            "F_all_err": np.full(shape, 0.1),
+            "F_filtered": np.arange(12).reshape(shape) + 2,
+            "F_filtered_err": np.full(shape, 0.2),
+            "deviations": np.array([0.1, 0.3]),
+            "keep_mask": np.array([True, False]),
+            "cutoff": 0.5}
+    save_reference_plot_data(data, coords, 310, tmp_path / "reference_pmf")
+    loaded, loaded_coords, metadata = load_reference_plot_data(
+        tmp_path / "reference_pmf" / "reference_plot_data.npz"
+    )
+    assert metadata["temperature_K"] == 310.0
+    assert metadata["coordinate_count"] == 2
+    for expected, actual in zip(coords, loaded_coords):
+        np.testing.assert_array_equal(expected, actual)
+    for name, expected in data.items():
+        np.testing.assert_array_equal(expected, loaded[name])
+
+
+def test_reference_plot_only_recreates_figures_without_source_histories(tmp_path):
+    coords = (np.linspace(-1, 1, 8),)
+    data = compute_reference_pmf_with_outliers(
+        coords,
+        [np.linspace(0, 2, 8), np.linspace(0.2, 2.2, 8), np.linspace(0.1, 1.9, 8)],
+        300,
+        write_prefix=tmp_path / "source" / "reference",
+    )
+    save_reference_plot_data(data, coords, 300, tmp_path / "saved" / "reference_pmf",
+                            simple_reference_plot=True, simple_xlabel="CV")
+    for path in (tmp_path / "source").glob("*.pmf"):
+        path.unlink()
+    loaded, loaded_coords, metadata = load_reference_plot_data(
+        tmp_path / "saved" / "reference_pmf" / "reference_plot_data.npz"
+    )
+    output_root = tmp_path / "reference_replot"
+    config = PlotConfig(formats=("pdf",), output_root=str(output_root))
+    render_reference_figures(loaded, loaded_coords, output_root=output_root,
+                             config=config,
+                             simple_reference_plot=metadata["simple_reference_plot"],
+                             xlabel=metadata["simple_xlabel"])
+    figures = output_root / "reference_pmf" / "Figures"
+    assert (figures / "reference_pmf_multipanel.pdf").is_file()
+    assert (figures / "reference_median.pdf").is_file()
+
+
+def _saved_rmsd_items(tmp_path):
+    items = []
+    for value, seed in ((1, 1), (1, 2), (2, 1)):
+        record = SimpleNamespace(
+            run_id=f"run-{value}-{seed}", group="group-A", seed=seed,
+            parameter_values={"parameter": value},
+            pmf_file=tmp_path / f"missing-{value}-{seed}.pmf", count_file=None,
+        )
+        record.parameter_value = lambda value=value: value
+        analyzer = SimpleNamespace(
+            t=np.arange(6),
+            rmsd_raw=np.array([1.0, 0.8, 0.6, 0.4, 0.3, 0.2]) + value / 10,
+            rmsd_smooth=np.array([1.0, 0.82, 0.62, 0.42, 0.32, 0.22]) + value / 10,
+            rmsd_fit=np.array([1.0, 0.8, 0.6, 0.4, 0.3, 0.2]) + value / 10,
+            reference_pmf=np.linspace(0, 1, 4),
+            pmf_coords=(np.linspace(-1, 1, 4),),
+            reference_pmf_file=tmp_path / "missing-reference.pmf",
+            rmsd_thresh=0.5,
+            convergence_idx=3,
+        )
+        items.append((record, analyzer))
+    return items
+
+
+def test_rmsd_saved_round_trip_and_plot_only_grouped_and_seed_modes(tmp_path, monkeypatch):
+    pytest.importorskip("pubready")
+    items = _saved_rmsd_items(tmp_path)
+    analysis_root = tmp_path / "analysis"
+    config = PlotConfig(formats=("pdf",), output_root=str(analysis_root))
+    run_rmsd(items, output_root=analysis_root, config=config, divisor=20,
+             temperature_k=300, kbt_threshold=0.5)
+    run_rmsd(items, output_root=analysis_root, analysis_name="rmsd_seed_curves",
+             config=config, seed_mode=True, divisor=20, temperature_k=300,
+             kbt_threshold=0.5)
+
+    def fail_if_called(*_args, **_kwargs):
+        raise AssertionError("plot-only rendering instantiated PMFAnalyzer")
+
+    monkeypatch.setattr(rmsd_analysis_module, "PMFAnalyzer", fail_if_called)
+    for analysis_name, seed_mode in (("rmsd_curves", False), ("rmsd_seed_curves", True)):
+        series = analysis_root / analysis_name / "rmsd_series.csv"
+        metadata_path = analysis_root / analysis_name / "rmsd_plot_metadata.json"
+        loaded, metadata = load_rmsd_series(series, metadata_path)
+        assert metadata["temperature_K"] == 300.0
+        assert metadata["kbt_threshold"] == 0.5
+        with series.open(newline="") as handle:
+            row = next(csv.DictReader(handle))
+        assert json.loads(row["reference_pmf_used"])["values"] == [0.0, 1 / 3, 2 / 3, 1.0]
+        np.testing.assert_array_equal(loaded[0][1].rmsd_raw, items[0][1].rmsd_raw)
+        output_root = tmp_path / f"replot-{analysis_name}"
+        render_saved_rmsd_figures(
+            loaded,
+            output_root=output_root,
+            config=PlotConfig(formats=("pdf",), output_root=str(output_root)),
+            seed_mode=seed_mode,
+            divisor=metadata["time_divisor"],
+            kbt_threshold=metadata["kbt_threshold"],
+        )
+        assert (output_root / analysis_name / "Figures" / f"{analysis_name}_multipanel.pdf").is_file()
+
+    fig, ax = plt.subplots()
+    plot_group_panel(ax, loaded, divisor=20, kbt_threshold=0.5)
+    labels = [line.get_label() for line in ax.lines]
+    assert any(label.startswith("kBT threshold") for label in labels)
+    assert "Convergence time" in labels
+    plt.close(fig)

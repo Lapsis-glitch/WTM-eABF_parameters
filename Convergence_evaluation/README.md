@@ -120,6 +120,35 @@ The simple figure contains only the existing median reference PMF, with no
 legend or title. The regular comparison, outlier, PMF files, and diagnostic
 panels are still produced in the same run.
 
+Reference-PMF analysis also writes `reference_plot_data.npz` and
+`reference_plot_metadata.json` below `reference_pmf/`. These contain the
+coordinate grids, median/all/filtered PMFs, errors, outlier information,
+temperature, and units while the legacy PMF files remain available. Recreate
+the reference figures without reading the original histories with:
+
+```bash
+python Convergence_evaluation/plot_reference_saved.py \
+  Results/reference_pmf/reference_plot_data.npz --output-root Results
+```
+
+RMSD analysis writes `rmsd_series.csv` and `rmsd_plot_metadata.json` below both
+`rmsd_curves/` and `rmsd_seed_curves/`. The long-form rows include run
+metadata, snapshot/time values, raw/smoothed/fitted RMSD, the reference PMF,
+the kBT threshold in kcal/mol, temperature in K, and convergence values.
+Replot either grouped or seed-resolved results without source PMF/count files:
+
+```bash
+python Convergence_evaluation/plot_rmsd_saved.py \
+  Results/rmsd_curves/rmsd_series.csv --output-root Results
+python Convergence_evaluation/plot_rmsd_saved.py \
+  Results/rmsd_seed_curves/rmsd_series.csv --seed-mode --output-root Results
+```
+
+Analysis commands perform numerical calculations and create these saved data
+files; the saved-data commands only deserialize arrays/CSV rows and render
+figures. Existing PMF files and `rmsd_runs.csv` are still written for
+compatibility.
+
 `plot_results.py` falls back to unknown parameter names as axis labels. The
 2D plotter requires explicit `--x-parameter` and `--y-parameter` selection,
 while discovery itself supports any number of metadata dimensions.

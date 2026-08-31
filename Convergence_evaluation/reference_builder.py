@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -22,6 +23,8 @@ except ImportError:
 kB = 0.008314462618
 REFERENCE_XLABEL = "Coordinate"
 REFERENCE_YLABEL = "PMF (kcal/mol)"
+REFERENCE_DATA_FILENAME = "reference_plot_data.npz"
+REFERENCE_METADATA_FILENAME = "reference_plot_metadata.json"
 
 
 def pmf_to_prob(F, T):
@@ -70,6 +73,60 @@ def compute_reference_pmf_with_outliers(coords_tuple, F_list, T, mad_cut=3.5,
     return {"F_median": F_median, "F_all": F_all, "F_all_err": F_all_err,
             "F_filtered": F_filt, "F_filtered_err": F_filt_err,
             "keep_mask": keep_mask, "deviations": deviations, "cutoff": cutoff}
+
+
+def save_reference_plot_data(data, coords_tuple, temperature, output_directory,
+                            *, pmf_units="kcal/mol", coordinate_units="as_input",
+                            simple_reference_plot=False, simple_xlabel=None):
+    """Persist reference-PMF plotting arrays without changing legacy PMF files."""
+    output_directory = Path(output_directory)
+    output_directory.mkdir(parents=True, exist_ok=True)
+    data_path = output_directory / REFERENCE_DATA_FILENAME
+    metadata_path = output_directory / REFERENCE_METADATA_FILENAME
+    arrays = {f"coord_{index}": np.asarray(axis)
+              for index, axis in enumerate(coords_tuple)}
+    arrays.update({
+        "F_median": np.asarray(data["F_median"]),
+        "F_all": np.asarray(data["F_all"]),
+        "F_all_err": np.asarray(data["F_all_err"]),
+        "F_filtered": np.asarray(data["F_filtered"]),
+        "F_filtered_err": np.asarray(data["F_filtered_err"]),
+        "deviations": np.asarray(data["deviations"]),
+        "keep_mask": np.asarray(data["keep_mask"], dtype=bool),
+        "cutoff": np.asarray(data["cutoff"]),
+    })
+    np.savez_compressed(data_path, **arrays)
+    metadata = {
+        "format_version": 1,
+        "temperature_K": float(temperature),
+        "temperature_units": "K",
+        "pmf_units": pmf_units,
+        "coordinate_units": coordinate_units,
+        "coordinate_count": len(coords_tuple),
+        "coordinate_shapes": [list(np.asarray(axis).shape) for axis in coords_tuple],
+        "pmf_shape": list(np.asarray(data["F_median"]).shape),
+        "mad_cutoff": float(data["cutoff"]),
+        "simple_reference_plot": bool(simple_reference_plot),
+        "simple_xlabel": simple_xlabel,
+        "arrays": sorted(arrays),
+    }
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n")
+    return data_path, metadata_path
+
+
+def load_reference_plot_data(data_path, metadata_path=None):
+    """Load serialized reference-PMF plotting arrays and metadata only."""
+    data_path = Path(data_path)
+    metadata_path = (Path(metadata_path) if metadata_path is not None else
+                     data_path.with_name(REFERENCE_METADATA_FILENAME))
+    with np.load(data_path, allow_pickle=False) as saved:
+        coordinate_count = len([name for name in saved.files if name.startswith("coord_")])
+        coords_tuple = tuple(np.asarray(saved[f"coord_{index}"]) for index in range(coordinate_count))
+        data = {name: np.asarray(saved[name]) for name in (
+            "F_median", "F_all", "F_all_err", "F_filtered", "F_filtered_err",
+            "deviations", "keep_mask", "cutoff")}
+    metadata = json.loads(metadata_path.read_text())
+    return data, coords_tuple, metadata
 
 
 def plot_median_reference(ax, x, median, *, xlabel=REFERENCE_XLABEL,

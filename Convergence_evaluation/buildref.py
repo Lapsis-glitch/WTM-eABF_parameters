@@ -14,13 +14,15 @@ try:
     from .outputs import analysis_output
     from .plotting import PlotConfig, add_plotting_arguments, config_from_args
     from .pmf_io import interpolate_pmf
-    from .reference_builder import compute_reference_pmf_with_outliers, render_reference_figures
+    from .reference_builder import (compute_reference_pmf_with_outliers,
+                                    render_reference_figures, save_reference_plot_data)
 except ImportError:
     from input_discovery import records_from_inputs
     from outputs import analysis_output
     from plotting import PlotConfig, add_plotting_arguments, config_from_args
     from pmf_io import interpolate_pmf
-    from reference_builder import compute_reference_pmf_with_outliers, render_reference_figures
+    from reference_builder import (compute_reference_pmf_with_outliers,
+                                   render_reference_figures, save_reference_plot_data)
 
 
 def read_sequential_pmf_file(filename):
@@ -71,6 +73,9 @@ def run(base_dir=None, temperature=300, name="abf_00.abf1", n_points=100, *,
     output = analysis_output(output_root, "reference_pmf")
     data = compute_reference_pmf_with_outliers(coords_tuple, values, temperature,
                                                write_prefix=output.directory / "reference")
+    save_reference_plot_data(data, coords_tuple, temperature, output.directory,
+                             simple_reference_plot=simple_reference_plot,
+                             simple_xlabel=xlabel)
     render_reference_figures(data, coords_tuple, output_root=output_root,
                              config=config or PlotConfig(output_root=str(output_root)),
                              simple_reference_plot=simple_reference_plot, xlabel=xlabel)
