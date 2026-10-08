@@ -42,5 +42,5 @@ metadynamics {
    hillWeight 0.02
    hillWidth  2
    wellTempered   on
-   biasTemperature   __TEMPVALUE__
+   biasTemperature   __VALUE__
 }

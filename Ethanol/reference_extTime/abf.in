@@ -8,7 +8,7 @@
 # MD SECTION
 ##################################################
 
-numSteps             5000000
+numSteps             10000000
 
 # TOPOLOGY
 
@@ -28,7 +28,9 @@ exclude              scaled1-4
 
 coordinates          ../common/solvate.pdb
 bincoordinates       ../common/equilibrate.restart.coor
-binvelocities        ../common/equilibrate.restart.vel
+#binvelocities        ../common/equilibrate.restart.vel
+temperature          298
+seed                 __SEED__
 
 # EXTENDED SYSTEM
 
@@ -89,7 +91,7 @@ nonbondedfreq        1
 
 rigidbonds           all   
 
-#GPUresident          on
+GPUresident          on
 
 ##################################################
 # ABF SECTION
