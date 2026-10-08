@@ -11,14 +11,11 @@ import numpy as np
 # CONFIGURATION
 # ============================================================
 
-parent_dir = "/home/lia/gchen/WTM-eABF/deca_ala_seed_100ns/"
-parent_dir = "/home/lia/gchen/WTM-eABF/deca_ala_seed_12-32_10ns"
-parent_dir = "/home/lia/gchen/WTM-eABF/deca_ala_final/"
+parent_dir = "./"   # folder containing the run folders and reference_median.pmf
 pattern = "MTDwidth*"
 pmf_filename = "output/abf_00.abf1.hist.czar.pmf"
 count_filename = "output/abf_00.abf1.hist.zcount"
 
-#parent_dir = "/home/lia/gchen/WTM-eABF/ethanol_scripted_long"
 #pmf_filename = "output/window1.abf1.hist.czar.pmf"
 #count_filename = "output/window1.abf1.hist.zcount"
 

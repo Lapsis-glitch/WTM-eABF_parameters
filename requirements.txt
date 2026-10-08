@@ -1,0 +1,10 @@
+# Figure and analysis scripts (tested with Python 3.12.11)
+numpy==2.0.1
+pandas==2.3.2
+matplotlib==3.10.6
+scipy==1.16.1
+# Only for Figures/scripts/prep_structures.py (regenerates Figures/structures/*.json)
+# rdkit
+# MDAnalysis
+# Convergence_evaluation plotting scripts also use
+seaborn

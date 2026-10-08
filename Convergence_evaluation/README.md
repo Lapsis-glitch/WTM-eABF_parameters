@@ -16,12 +16,19 @@ Tools:
   - Read/write single PMF format and history (multi-block) format.
   - Interpolate PMFs to common grids.
 
+- `folder_parser.py` / `folder_parser_2D.py` — Apply the convergence criterion used in the paper to every run of a
+  one- or two-parameter sweep and write `results.dat` (mean, SD, min, max of the convergence frame, number of
+  converged runs). `plot_results.py` / `plot_results2D.py` plot it.
+
+- `check_convergence_from_rmsd.py` — Recompute the per-replica convergence frames from the RMSD series saved in
+  `../Data` and compare them with the saved values.
+
 - `RMSD_curve_plotter.py` — Convenience script to compare RMSD curves across grouped runs:
   - Groups folders by prefix before the first underscore, filters invalid runs, and plots group-wise RMSD overlays.
 
 Requirements:
-- Python 3.7+
-- numpy, scipy, matplotlib
+- Python 3.12 (tested), see ../requirements.txt
+- numpy, scipy, matplotlib, pandas, seaborn
 
 Quick examples:
 

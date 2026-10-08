@@ -51,8 +51,8 @@ def plot_pmf_set(
         # Load a font from TTF file, 
         # relative to this Python module
         # https://stackoverflow.com/a/69016300/315168
-        #font_path = os.path.join(os.path.dirname(__file__), '/home/lia/gchen/miniconda3/envs/nn4/fonts/arial.ttf')
-        font_path = '/home/lia/gchen/miniconda3/envs/nn/fonts/arial.ttf'
+        # Optional: path to arial.ttf, otherwise the matplotlib default font is used
+        font_path = os.environ.get('MATPLOTLIB_FONT_PATH', '')
         assert os.path.exists(font_path)
         font_manager.fontManager.addfont(font_path)
         prop = font_manager.FontProperties(fname=font_path)

@@ -1,0 +1,4 @@
+reference_median.pmf: 90/90 results.dat lines identical (EXACT MATCH); analysis errors: 0
+reference_average_all.pmf: 14/90 results.dat lines identical; analysis errors: 0
+reference_average_filtered.pmf: 50/90 results.dat lines identical; analysis errors: 0
+used_reference: reference_median.pmf

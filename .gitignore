@@ -1,0 +1,13 @@
+# IDE and Python
+.idea/
+__pycache__/
+*.pyc
+# unpacked ketoprofen histories (see unpack_keto.sh)
+Ketoprofen/runs/*/output/*.hist*.pmf
+# outputs written by the scripts
+build/*
+!build/.gitkeep
+Figures/Main/*.pdf
+Figures/SI/*.pdf
+Ketoprofen/analysis/results/
+Ketoprofen/analysis/figures/
