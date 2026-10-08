@@ -1,0 +1,49 @@
+# Ketoprofen / POPC: WTM-eABF along the membrane normal (z), -40 to 40 A
+
+colvarsTrajFrequency        50000
+colvarsRestartFrequency     50000
+
+colvar {
+   name                    ProjectionZ
+
+   width                      0.2
+
+   lowerBoundary            -40.0
+   upperBoundary             40.0
+
+   lowerWallConstant        100.0
+   upperWallConstant        100.0
+
+   lowerWall                -41.0
+   upperWall                 41.0
+
+   extendedLagrangian        on
+   extendedFluctuation        0.1
+
+   subtractAppliedForce      on
+
+   distanceZ {
+      main {
+         atomNumbersRange    1-33
+      }
+      ref {
+         atomsFile           ../common/Patoms.pdb
+         atomsCol            B
+      }
+      forceNoPBC             yes
+   }
+}
+
+abf {
+   colvars                   ProjectionZ
+   fullSamples               5000
+   historyFreq             100000
+}
+
+metadynamics {
+   colvars                   ProjectionZ
+   hillWeight                0.3
+   hillWidth                   2
+   wellTempered               on
+   biasTemperature         __TEMPVALUE__
+}
