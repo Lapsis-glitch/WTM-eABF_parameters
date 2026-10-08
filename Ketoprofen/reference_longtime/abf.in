@@ -1,0 +1,168 @@
+##################################################
+# DESCRIPTION
+##################################################
+
+# KETOPROFEN PERMEATION THROUGH POPC MEMBRANE
+# WTM-eABF long reference run (2e9 steps x 2 fs = 4 us)
+
+##################################################
+# MD SECTION
+##################################################
+
+numSteps             2000000000
+
+# REPRODUCIBILITY
+seed                 40
+
+# TOPOLOGY
+structure               ../common/step5_input.psf
+
+# FORCE FIELD
+paraTypeCharmm          on;
+parameters              ../common/toppar/par_all36m_prot.prm
+parameters              ../common/toppar/par_all36_na.prm
+parameters              ../common/toppar/par_all36_carb.prm
+parameters              ../common/toppar/par_all36_lipid.prm
+parameters              ../common/toppar/par_all36_cgenff.prm
+parameters              ../common/toppar/par_interface.prm
+parameters              ../common/toppar/toppar_all36_moreions.str
+parameters              ../common/toppar/toppar_all36_nano_lig.str
+parameters              ../common/toppar/toppar_all36_nano_lig_patch.str
+parameters              ../common/toppar/toppar_all36_synthetic_polymer.str
+parameters              ../common/toppar/toppar_all36_synthetic_polymer_patch.str
+parameters              ../common/toppar/toppar_all36_polymer_solvent.str
+parameters              ../common/toppar/toppar_water_ions.str
+parameters              ../common/toppar/toppar_dum_noble_gases.str
+parameters              ../common/toppar/toppar_ions_won.str
+parameters              ../common/toppar/cam.str
+parameters              ../common/toppar/toppar_all36_prot_arg0.str
+parameters              ../common/toppar/toppar_all36_prot_c36m_d_aminoacids.str
+parameters              ../common/toppar/toppar_all36_prot_fluoro_alkanes.str
+parameters              ../common/toppar/toppar_all36_prot_heme.str
+parameters              ../common/toppar/toppar_all36_prot_na_combined.str
+parameters              ../common/toppar/toppar_all36_prot_retinol.str
+parameters              ../common/toppar/toppar_all36_prot_model.str
+parameters              ../common/toppar/toppar_all36_prot_modify_res.str
+parameters              ../common/toppar/toppar_all36_na_nad_ppi.str
+parameters              ../common/toppar/toppar_all36_na_rna_modified.str
+parameters              ../common/toppar/toppar_all36_lipid_sphingo.str
+parameters              ../common/toppar/toppar_all36_lipid_archaeal.str
+parameters              ../common/toppar/toppar_all36_lipid_bacterial.str
+parameters              ../common/toppar/toppar_all36_lipid_cardiolipin.str
+parameters              ../common/toppar/toppar_all36_lipid_cholesterol.str
+parameters              ../common/toppar/toppar_all36_lipid_dag.str
+parameters              ../common/toppar/toppar_all36_lipid_inositol.str
+parameters              ../common/toppar/toppar_all36_lipid_lnp.str
+parameters              ../common/toppar/toppar_all36_lipid_lps.str
+parameters              ../common/toppar/toppar_all36_lipid_mycobacterial.str
+parameters              ../common/toppar/toppar_all36_lipid_miscellaneous.str
+parameters              ../common/toppar/toppar_all36_lipid_model.str
+parameters              ../common/toppar/toppar_all36_lipid_prot.str
+parameters              ../common/toppar/toppar_all36_lipid_tag.str
+parameters              ../common/toppar/toppar_all36_lipid_yeast.str
+parameters              ../common/toppar/toppar_all36_lipid_hmmm.str
+parameters              ../common/toppar/toppar_all36_lipid_detergent.str
+parameters              ../common/toppar/toppar_all36_lipid_ether.str
+parameters              ../common/toppar/toppar_all36_lipid_oxidized.str
+parameters              ../common/toppar/toppar_all36_carb_glycolipid.str
+parameters              ../common/toppar/toppar_all36_carb_glycopeptide.str
+parameters              ../common/toppar/toppar_all36_carb_imlab.str
+parameters              ../common/toppar/toppar_all36_label_spin.str
+parameters              ../common/toppar/toppar_all36_label_fluorophore.str
+parameters              ../common/lig.prm   # Custom topology and parameter files for LIG
+source                  ../common/step5_input.str
+
+
+
+# 1-4 TERMs
+
+exclude              scaled1-4
+1-4scaling           1.0
+
+# INPUT FILES
+coordinates             ../common/step5_input.pdb
+bincoordinates       ../common/start.restart.coor
+binvelocities        ../common/start.restart.vel
+
+# EXTENDED SYSTEM
+
+ExtendedSystem       ../common/start.restart.xsc
+
+# OUTPUT FILES
+
+binaryoutput         no
+binaryrestart        yes
+outputname           output/window1
+dcdUnitCell          yes
+
+# FREQUENCY FOR DUMPING OUTPUT DATA
+
+outputenergies       50000
+outputtiming         50000
+outputpressure       50000
+restartfreq          50000
+XSTFreq              50000
+dcdFreq              50000
+
+# CUT-OFFs
+
+vdwForceSwitching    on
+switching            on
+switchDist           10
+cutoff               12
+pairListDist         14
+
+
+# WRAPPING
+
+wrapWater            yes
+comMotion            yes
+
+# CONSTANT-T
+
+set temperature      310
+
+stochrescale         on
+stochrescaletemp     $temperature
+stochrescaleperiod   1.0
+
+# CONSTANT-P
+
+usegrouppressure     yes
+useflexiblecell      yes
+useconstantratio     yes
+
+langevinpiston       on
+langevinpistontarget 1.01325
+langevinpistontemp   $temperature
+langevinpistondecay  300
+langevinpistonperiod 400
+
+# PME
+
+PME                  yes
+PMEGridSpacing       1.2
+
+# MULTIPLE TIME-STEP PROPAGATOR
+
+timestep             2.0
+
+fullelectfrequency   2
+nonbondedfreq        1
+stepspercycle        100
+pairlistsPerCycle    2
+
+# SHAKE/RATTLE
+
+rigidbonds           all
+
+# GPU
+
+GPUresident          on
+
+##################################################
+# ABF SECTION
+##################################################
+
+colvars              on
+colvarsConfig        colvar.in
