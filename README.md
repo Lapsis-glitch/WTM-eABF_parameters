@@ -8,7 +8,7 @@ Simulation inputs, convergence-analysis code, processed data and figure scripts 
 
 | Path | What |
 |---|---|
-| `Deca_ala/`, `Ethanol/` | NAMD/Colvars inputs of the one-dimensional sweeps. `reference*/` hold the baseline `abf.in` and `colvar.in` of each sweep, `runme_*.sh` create one folder per value and seed and run NAMD. |
+| `Deca_ala/`, `Ethanol/` | NAMD/Colvars inputs of the one-dimensional sweeps (`*_fullSamp5000_*` = deca-alanine repeat at `fullSamples`=5000, `Ethanol/reference_2D` = ethanol two-dimensional grid). `reference*/` hold the baseline `abf.in` and `colvar.in` of each sweep, `runme_*.sh` create one folder per value and seed and run NAMD. |
 | `Ketoprofen/` | NAMD/Colvars inputs of the ketoprofen/POPC benchmark (`runme_MTDtemp.sh` = stage one, `runme_extFluc_fullSamp.sh` = stage two, `runme_longtime.sh` = ~3.4 µs reference run). |
 | `Ketoprofen/runs/<run>/output/` | Raw output of all 92 ketoprofen runs and the reference run: final CZAR PMF, Colvars trajectory and xz-compressed PMF history. |
 | `Ketoprofen/analysis/` | Ketoprofen PMF analysis (symmetrization, bulk anchoring, accuracy, reproducibility, reference and median PMFs). |
@@ -85,9 +85,8 @@ Both reproduce the shipped files exactly.
 
 ## Inputs not included
 
-Not in this repository: the NANMA inputs, the `newHillFrequency` sweep scripts, and the inputs of the
-deca-alanine two-dimensional, `fullSamples`=5000 and standalone WT-MtD sweeps and of the ethanol
-two-dimensional sweep. Their settings are listed in the Supporting Information.
+Not in this repository yet: the NANMA inputs, the deca-alanine `newHillFrequency`, two-dimensional
+and standalone WT-MtD sweeps. Their settings are listed in the Supporting Information.
 
 ## License
 

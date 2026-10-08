@@ -2,3 +2,4 @@
 ./runme_extFluc.sh
 ./runme_extTime.sh
 ./runme_fullSamp.sh
+./runme_MTDnewhill.sh
