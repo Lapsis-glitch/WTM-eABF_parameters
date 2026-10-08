@@ -33,7 +33,7 @@ harmonicWalls {
 
 abf {
    colvars AtomDistance
-   fullSamples   __VALUE__
+   fullSamples   500
    historyFreq 100000
 }
 
@@ -42,5 +42,5 @@ metadynamics {
    hillWeight 0.1
    hillWidth  3
    wellTempered   on
-   biasTemperature   1000
+   biasTemperature   __VALUE__
 }

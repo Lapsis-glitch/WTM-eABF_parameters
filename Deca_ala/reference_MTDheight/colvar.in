@@ -26,8 +26,8 @@ colvar {
 
 harmonicWalls {
    colvars AtomDistance
-   lowerWalls    12.0
-   upperWalls    32.0
+   lowerWalls    11.5
+   upperWalls    32.5
    forceConstant 10.0
 }
 

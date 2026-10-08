@@ -16,7 +16,7 @@
 
 # NUMBER OF MD-STEPS
 
-numsteps             10000000
+numsteps             20000000
 
 
 # TOPOLOGY
@@ -40,6 +40,7 @@ exclude              scaled1-4
 
 coordinates          ../common/deca-ala.pdb
 temperature          300.0
+seed                 __SEED__
 
 
 # OUTPUT FILES
