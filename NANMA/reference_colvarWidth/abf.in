@@ -1,0 +1,79 @@
+# MD SETUP
+
+timestep                0.5
+numSteps                100000000
+set outName             output/nanma
+
+# INPUT
+
+structure               ../common/vacuum.psf 
+parameters              ../common/par_all22_prot.inp
+paraTypeCharmm          on
+
+coordinates             ../common/equilvaco.coor
+temperature             300
+seed                    __SEED__
+
+# OUTPUT
+
+outputenergies          50000
+outputtiming            50000
+restartfreq             50000
+
+binaryoutput            no
+binaryrestart           yes
+
+outputname              ${outName}
+restartname             ${outName}
+
+
+# DCD
+
+DCDfile                 ${outName}.dcd
+DCDfreq                 50000
+DCDUnitCell             yes
+
+
+# CONSTANT-T
+
+langevin                on
+langevinTemp            300.0
+langevinDamping         10.0
+
+
+# SPACE PARTITIONING
+
+splitpatch              hydrogen
+hgroupcutoff            2.8
+stepspercycle           16
+margin                  1.0
+
+
+# CUT-OFFS
+
+switching               off
+switchdist              18.0
+cutoff                  20.0
+pairlistdist            22.0
+
+
+# 1-4 NON-BONDED
+
+exclude                 scaled1-4
+1-4scaling              1.0
+
+
+# COM
+
+commotion               no
+
+
+# SHAKE
+
+rigidbonds              none
+
+
+# ABF
+
+colvars	on
+colvarsConfig           colvar.in

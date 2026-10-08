@@ -1,0 +1,85 @@
+colvarsTrajFrequency    50000
+colvarsRestartFrequency 50000
+
+
+colvar {
+  name phi
+
+  width __VALUE__
+  lowerBoundary -180
+  upperBoundary 180
+
+  extendedLagrangian on
+  extendedFluctuation 2
+  extendedLangevinDamping 1.0
+  extendedTimeConstant 200
+
+  subtractAppliedForce on
+  outputTotalForce
+
+  dihedral {
+    #onesiteTotalForce
+    group1 { 
+      atomnumbers 13
+    }
+    group2 { 
+      atomnumbers 15
+    }
+    group3 { 
+      atomnumbers 17
+    }
+    group4 { 
+      atomnumbers 1
+    }
+  }
+}
+
+colvar {
+  name psi
+
+  width __VALUE__
+  lowerBoundary -180
+  upperBoundary 180
+
+  extendedLagrangian on
+  extendedFluctuation 2
+  extendedLangevinDamping 1.0
+  extendedTimeConstant 200
+
+  subtractAppliedForce on
+  outputTotalForce
+
+  dihedral {
+    #onesiteTotalForce
+    group1 { 
+      atomnumbers 3
+    }
+    group2 { 
+      atomnumbers 1
+    }
+    group3 { 
+      atomnumbers 17
+    }
+    group4 { 
+      atomnumbers 15
+    }
+  }
+}
+
+
+abf {
+  colvars phi psi
+  fullSamples	500
+  writeCZARwindowfile
+  historyFreq          1000000
+}
+
+metadynamics {
+   colvars phi psi
+   hillWeight 0.1
+   hillWidth 2
+   newHillFrequency 1000
+   wellTempered on
+   biasTemperature 3000
+   
+}

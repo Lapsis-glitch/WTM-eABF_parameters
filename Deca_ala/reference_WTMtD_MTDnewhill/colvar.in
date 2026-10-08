@@ -1,0 +1,36 @@
+colvarsTrajFrequency     20000
+colvarsRestartFrequency  100000
+
+colvar {
+   name AtomDistance
+  
+   width 0.1
+   lowerBoundary 12.0
+   upperBoundary 32.0
+   
+   distance {
+      group1 {
+         atomnumbers { 10 }
+      }
+      group2 {
+         atomnumbers { 92 }
+      }
+   }
+}
+
+harmonicWalls {
+   colvars AtomDistance
+   lowerWalls    11.5
+   upperWalls    32.5
+   forceConstant 10.0
+}
+
+metadynamics {
+   colvars AtomDistance
+   hillWeight 0.1
+   hillWidth  3
+   wellTempered   on
+   biasTemperature   10000
+   keepFreeEnergyFiles   on
+   newHillFrequency __VALUE__
+}
