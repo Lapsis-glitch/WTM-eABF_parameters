@@ -8,7 +8,7 @@ Simulation inputs, convergence-analysis code, processed data and figure scripts 
 
 | Path | What |
 |---|---|
-| `NANMA/`, `Deca_ala/`, `Ethanol/` | NAMD/Colvars inputs. `reference_<sweep>/` hold the template `abf.in` and `colvar.in` of each sweep, `runme_<sweep>.sh` create one folder per value and seed and run NAMD. Deca-alanine: `*_fullSamp5000_*` = repeat at `fullSamples`=5000, `*_fullSamp_extFluc` = two-dimensional grid, `*_WTMtD_*` = standalone WT-MtD. Ethanol: `reference_2D` = two-dimensional grid. |
+| `NANMA/`, `Deca_ala/`, `Ethanol/` | NAMD/Colvars inputs. `reference_<sweep>/` hold the template `abf.in` and `colvar.in` of each sweep, `runme_<sweep>.sh` create one folder per value and seed and run NAMD. NANMA: `common/` = vacuum structure (`vacuum.psf`, CHARMM22), parameters and equilibrated coordinates. Deca-alanine: `*_fullSamp5000_*` = repeat at `fullSamples`=5000, `*_fullSamp_extFluc` = two-dimensional grid, `*_WTMtD_*` = standalone WT-MtD. Ethanol: `reference_2D` = two-dimensional grid. |
 | `Ketoprofen/` | NAMD/Colvars inputs of the ketoprofen/POPC benchmark (`runme_MTDtemp.sh` = stage one, `runme_extFluc_fullSamp.sh` = stage two, `runme_longtime.sh` = ~3.4 µs reference run). |
 | `Ketoprofen/runs/<run>/output/` | Raw output of all 92 ketoprofen runs and the reference run: final CZAR PMF, Colvars trajectory and xz-compressed PMF history. |
 | `Ketoprofen/analysis/` | Ketoprofen PMF analysis (symmetrization, bulk anchoring, accuracy, reproducibility, reference and median PMFs). |
@@ -82,11 +82,6 @@ cd Ketoprofen/analysis && python analyze.py          # per-cell accuracy/reprodu
 ```
 
 Both reproduce the shipped files exactly.
-
-## Inputs not included
-
-The NANMA structure and parameter files (`vacuum.psf`, `par_all22_prot.inp`, `equilvaco.coor`, see
-`NANMA/common/README.txt`) still need to be added.
 
 ## License
 
